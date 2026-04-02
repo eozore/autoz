@@ -1,0 +1,9 @@
+node_modules
+*/node_modules
+**/node_modules
+.git
+.kiro
+packages/backend/dist
+packages/backend/uploads
+packages/frontend/dist
+*.md

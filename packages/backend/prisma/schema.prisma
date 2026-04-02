@@ -1,0 +1,275 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum Role {
+  OWNER
+  ADMIN
+  EMPLOYEE
+}
+
+enum ItemType {
+  USO
+  VENDA
+}
+
+enum MovementType {
+  ENTRADA
+  SAIDA_USO
+  SAIDA_VENDA
+}
+
+enum ReferenceType {
+  SERVICO
+  VENDA
+  MANUAL
+}
+
+enum BillStatus {
+  PENDENTE
+  PAGO
+  ATRASADO
+}
+
+enum AppointmentStatus {
+  AGENDADO
+  CONFIRMADO
+  EM_ANDAMENTO
+  CONCLUIDO
+  CANCELADO
+}
+
+// ==================== MODELS ====================
+
+model Tenant {
+  id         String   @id @default(uuid())
+  slug       String   @unique
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  users        User[]
+  company      Company?
+  locations    Location[]
+  services     Service[]
+  clients      Client[]
+  vehicles     Vehicle[]
+  inventoryItems InventoryItem[]
+  stockMovements StockMovement[]
+  bills        Bill[]
+  appointments Appointment[]
+
+  @@map("tenants")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  tenant_id     String?
+  email         String   @unique
+  password_hash String
+  nome          String
+  idade         Int
+  celular       String
+  foto_url      String?
+  role          Role     @default(OWNER)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([email])
+  @@map("users")
+}
+
+model Company {
+  id         String   @id @default(uuid())
+  tenant_id  String   @unique
+  nome       String
+  logo_url   String?
+  descricao  String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenant_id], references: [id])
+  locations Location[]
+
+  @@map("companies")
+}
+
+model Location {
+  id                    String   @id @default(uuid())
+  tenant_id             String
+  company_id            String
+  endereco_rua          String
+  endereco_numero       String
+  endereco_complemento  String?
+  endereco_bairro       String
+  endereco_cidade       String
+  endereco_estado       String
+  endereco_cep          String
+  is_primary            Boolean  @default(false)
+  horario_abertura      String   @default("08:00")
+  horario_fechamento    String   @default("18:00")
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenant_id], references: [id])
+  company      Company       @relation(fields: [company_id], references: [id])
+  appointments Appointment[]
+
+  @@index([tenant_id])
+  @@map("locations")
+}
+
+model Service {
+  id              String   @id @default(uuid())
+  tenant_id       String
+  nome            String
+  descricao       String?
+  foto_url        String?
+  duracao_minutos Int      @default(60)
+  valor           Decimal? @db.Decimal(10, 2)
+  ativo           Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenant_id], references: [id])
+  appointments Appointment[]
+
+  @@index([tenant_id])
+  @@map("services")
+}
+
+model Client {
+  id               String    @id @default(uuid())
+  tenant_id        String
+  nome             String
+  email            String?
+  celular          String
+  data_nascimento  DateTime? @db.Date
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenant_id], references: [id])
+  vehicles Vehicle[]
+  appointments Appointment[]
+
+  @@unique([tenant_id, celular])
+  @@unique([tenant_id, email])
+  @@index([tenant_id])
+  @@map("clients")
+}
+
+model Vehicle {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  client_id  String
+  marca      String
+  modelo     String
+  ano        Int
+  placa      String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+  client Client @relation(fields: [client_id], references: [id])
+
+  @@unique([tenant_id, placa])
+  @@index([tenant_id])
+  @@index([placa])
+  @@map("vehicles")
+}
+
+model InventoryItem {
+  id                String   @id @default(uuid())
+  tenant_id         String
+  nome              String
+  descricao         String?
+  custo             Decimal  @db.Decimal(10, 2)
+  valor_venda       Decimal  @db.Decimal(10, 2)
+  tipo              ItemType
+  quantidade_atual  Int
+  quantidade_minima Int      @default(0)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  tenant     Tenant          @relation(fields: [tenant_id], references: [id])
+  movements  StockMovement[]
+
+  @@index([tenant_id])
+  @@map("inventory_items")
+}
+
+model StockMovement {
+  id              String         @id @default(uuid())
+  tenant_id       String
+  item_id         String
+  tipo            MovementType
+  quantidade      Int
+  referencia_tipo ReferenceType?
+  referencia_id   String?
+  notas           String?
+  created_at      DateTime       @default(now())
+
+  tenant Tenant        @relation(fields: [tenant_id], references: [id])
+  item   InventoryItem @relation(fields: [item_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("stock_movements")
+}
+
+model Bill {
+  id              String     @id @default(uuid())
+  tenant_id       String
+  descricao       String
+  valor           Decimal    @db.Decimal(10, 2)
+  data_vencimento DateTime   @db.Date
+  data_pagamento  DateTime?  @db.Date
+  status          BillStatus @default(PENDENTE)
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("bills")
+}
+
+model Appointment {
+  id                 String            @id @default(uuid())
+  tenant_id          String
+  client_id          String?
+  service_id         String
+  location_id        String
+  data_hora          DateTime
+  duracao_minutos    Int
+  status             AppointmentStatus @default(AGENDADO)
+  nome_visitante     String?
+  celular_visitante  String?
+  notas              String?
+  desconto           Decimal?          @db.Decimal(10, 2)
+  forma_pagamento    String?
+  valor_servico      Decimal?          @db.Decimal(10, 2)
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenant_id], references: [id])
+  client   Client?  @relation(fields: [client_id], references: [id])
+  service  Service  @relation(fields: [service_id], references: [id])
+  location Location @relation(fields: [location_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([data_hora])
+  @@map("appointments")
+}
