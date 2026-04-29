@@ -16,6 +16,8 @@ export const prisma = new PrismaClient({
 
 // All table names in the correct deletion order (respecting FK constraints)
 const TABLE_NAMES = [
+  'appointment_services',
+  'vehicle_ownership_history',
   'appointments',
   'stock_movements',
   'bills',

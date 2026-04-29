@@ -4,7 +4,7 @@ import api, { ApiError } from '../lib/api';
 interface Appointment {
   id: string;
   client_id: string | null;
-  service_id: string;
+  service_id: string | null;
   location_id: string;
   data_hora: string;
   duracao_minutos: number;
@@ -15,15 +15,20 @@ interface Appointment {
   desconto: number | null;
   forma_pagamento: string | null;
   valor_servico: number | null;
+  vehicle_id: string | null;
+  quilometragem: number | null;
   client?: { id: string; nome: string };
-  service?: { id: string; nome: string; duracao_minutos?: number; valor?: number };
+  service?: { id: string; nome: string; duracao_minutos?: number; valor?: number } | null;
   location?: { id: string; endereco_rua: string; endereco_numero: string };
+  appointmentServices?: { id: string; service_id: string; service: { id: string; nome: string } }[];
+  vehicle?: { id: string; marca: string; modelo: string; placa: string; cor: string | null } | null;
 }
 
 interface Client { id: string; nome: string; }
 interface Service { id: string; nome: string; duracao_minutos: number; valor?: number; }
 interface Location { id: string; endereco_rua: string; endereco_numero: string; endereco_cidade: string; }
 interface Company { id: string; locations: Location[]; }
+interface Vehicle { id: string; marca: string; modelo: string; placa: string; cor: string | null; }
 
 const statusBadge: Record<string, string> = {
   AGENDADO: 'badge-blue',
@@ -55,10 +60,14 @@ const statusButtonLabel: Record<string, string> = {
 
 const money = (v: number) => 'R$ ' + v.toFixed(2).replace('.', ',');
 
-function todayStr() { return new Date().toISOString().split('T')[0]; }
-function weekLaterStr() {
+function defaultStartStr() {
   const d = new Date();
-  d.setDate(d.getDate() + 7);
+  d.setDate(d.getDate() - 30);
+  return d.toISOString().split('T')[0];
+}
+function defaultEndStr() {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
   return d.toISOString().split('T')[0];
 }
 
@@ -66,21 +75,30 @@ type StatusFilter = 'TODOS' | 'AGENDADO' | 'EM_ANDAMENTO' | 'CONCLUIDO' | 'CANCE
 
 interface FormState {
   client_id: string;
-  service_id: string;
+  service_ids: string[];
   location_id: string;
   data_hora: string;
   notas: string;
   valor_servico: string;
   desconto: string;
   forma_pagamento: string;
+  vehicle_id: string;
+  quilometragem: string;
+}
+
+function getServiceNames(a: Appointment): string {
+  if (a.appointmentServices && a.appointmentServices.length > 0) {
+    return a.appointmentServices.map(as => as.service.nome).join(', ');
+  }
+  return a.service?.nome || '—';
 }
 
 export default function AppointmentsPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [startDate, setStartDate] = useState(todayStr());
-  const [endDate, setEndDate] = useState(weekLaterStr());
+  const [startDate, setStartDate] = useState(defaultStartStr());
+  const [endDate, setEndDate] = useState(defaultEndStr());
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('TODOS');
@@ -92,10 +110,12 @@ export default function AppointmentsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [visibleCount, setVisibleCount] = useState(9);
   const [form, setForm] = useState<FormState>({
-    client_id: '', service_id: '', location_id: '', data_hora: '',
+    client_id: '', service_ids: [], location_id: '', data_hora: '',
     notas: '', valor_servico: '', desconto: '', forma_pagamento: '',
+    vehicle_id: '', quilometragem: '',
   });
 
   const filtered = useMemo(() => {
@@ -112,7 +132,7 @@ export default function AppointmentsPage() {
       const q = search.toLowerCase();
       result = result.filter(a =>
         (a.client?.nome || a.nome_visitante || '').toLowerCase().includes(q) ||
-        (a.service?.nome || '').toLowerCase().includes(q) ||
+        getServiceNames(a).toLowerCase().includes(q) ||
         (a.notas || '').toLowerCase().includes(q)
       );
     }
@@ -123,6 +143,20 @@ export default function AppointmentsPage() {
     if (!selectedId) return null;
     return appointments.find(a => a.id === selectedId) || null;
   }, [appointments, selectedId]);
+
+  // Derived: selected vehicle details for form
+  const selectedFormVehicle = useMemo(() => {
+    if (!form.vehicle_id) return null;
+    return vehicles.find(v => v.id === form.vehicle_id) || null;
+  }, [form.vehicle_id, vehicles]);
+
+  // Derived: total duration from selected services
+  const totalDuration = useMemo(() => {
+    return form.service_ids.reduce((sum, id) => {
+      const svc = services.find(s => s.id === id);
+      return sum + (svc?.duracao_minutos || 0);
+    }, 0);
+  }, [form.service_ids, services]);
 
   async function loadAppointments() {
     setLoading(true);
@@ -136,14 +170,16 @@ export default function AppointmentsPage() {
 
   async function loadFormData() {
     try {
-      const [clientRes, serviceRes, companyRes] = await Promise.all([
+      const [clientRes, serviceRes, companyRes, vehicleRes] = await Promise.all([
         api.get<{ data: Client[] }>('/clients?limit=100'),
         api.get<Service[]>('/services'),
         api.get<Company>('/companies/me'),
+        api.get<{ data: Vehicle[] }>('/vehicles?limit=100'),
       ]);
       setClients(clientRes.data);
       setServices(serviceRes);
       setLocations(companyRes.locations || []);
+      setVehicles(vehicleRes.data);
     } catch { /* ignore */ }
   }
 
@@ -155,8 +191,9 @@ export default function AppointmentsPage() {
     await loadFormData();
     setEditId(null);
     setForm({
-      client_id: '', service_id: '', location_id: '', data_hora: '',
+      client_id: '', service_ids: [], location_id: '', data_hora: '',
       notas: '', valor_servico: '', desconto: '', forma_pagamento: '',
+      vehicle_id: '', quilometragem: '',
     });
     setShowForm(true);
   }
@@ -165,26 +202,33 @@ export default function AppointmentsPage() {
     await loadFormData();
     setEditId(a.id);
     const dtLocal = a.data_hora ? new Date(a.data_hora).toISOString().slice(0, 16) : '';
+    // Collect service_ids from appointmentServices or fallback to service_id
+    const serviceIds = a.appointmentServices && a.appointmentServices.length > 0
+      ? a.appointmentServices.map(as => as.service_id)
+      : (a.service_id ? [a.service_id] : []);
     setForm({
       client_id: a.client_id || '',
-      service_id: a.service_id,
+      service_ids: serviceIds,
       location_id: a.location_id,
       data_hora: dtLocal,
       notas: a.notas || '',
       valor_servico: a.valor_servico != null ? String(Number(a.valor_servico)) : '',
       desconto: a.desconto != null ? String(Number(a.desconto)) : '',
       forma_pagamento: a.forma_pagamento || '',
+      vehicle_id: a.vehicle_id || '',
+      quilometragem: a.quilometragem != null ? String(a.quilometragem) : '',
     });
     setShowForm(true);
   }
 
-  function handleServiceChange(serviceId: string) {
-    const svc = services.find(s => s.id === serviceId);
-    setForm(prev => ({
-      ...prev,
-      service_id: serviceId,
-      valor_servico: svc?.valor ? String(Number(svc.valor)) : prev.valor_servico,
-    }));
+  function toggleService(serviceId: string) {
+    setForm(prev => {
+      const already = prev.service_ids.includes(serviceId);
+      const newIds = already
+        ? prev.service_ids.filter(id => id !== serviceId)
+        : [...prev.service_ids, serviceId];
+      return { ...prev, service_ids: newIds };
+    });
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -192,26 +236,30 @@ export default function AppointmentsPage() {
     setError('');
     setSaving(true);
     try {
-      const selectedService = services.find(s => s.id === form.service_id);
       if (editId) {
-        const body = {
+        const body: Record<string, unknown> = {
           valor_servico: form.valor_servico ? parseFloat(form.valor_servico) : null,
           desconto: form.desconto ? parseFloat(form.desconto) : null,
           forma_pagamento: form.forma_pagamento || null,
           notas: form.notas || null,
+          service_ids: form.service_ids.length > 0 ? form.service_ids : undefined,
+          vehicle_id: form.vehicle_id || null,
+          quilometragem: form.quilometragem ? parseInt(form.quilometragem) : null,
         };
         await api.put(`/appointments/${editId}`, body);
       } else {
-        const body = {
+        const body: Record<string, unknown> = {
           client_id: form.client_id || undefined,
-          service_id: form.service_id,
+          service_ids: form.service_ids,
           location_id: form.location_id,
           data_hora: new Date(form.data_hora).toISOString(),
-          duracao_minutos: selectedService?.duracao_minutos || 60,
+          duracao_minutos: totalDuration || 60,
           notas: form.notas || undefined,
           valor_servico: form.valor_servico ? parseFloat(form.valor_servico) : undefined,
           desconto: form.desconto ? parseFloat(form.desconto) : undefined,
           forma_pagamento: form.forma_pagamento || undefined,
+          vehicle_id: form.vehicle_id || undefined,
+          quilometragem: form.quilometragem ? parseInt(form.quilometragem) : undefined,
         };
         await api.post('/appointments', body);
       }
@@ -317,30 +365,88 @@ export default function AppointmentsPage() {
                       {clients.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                     </select>
                   </label>
-                  <label className="flex-grow">Serviço *
-                    <select value={form.service_id} onChange={e => handleServiceChange(e.target.value)} required>
-                      <option value="">Selecione...</option>
-                      {services.map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.nome} ({s.duracao_minutos}min){s.valor ? ` - R${Number(s.valor).toFixed(2)}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="form-row">
                   <label className="flex-grow">Localização *
                     <select value={form.location_id} onChange={e => upd('location_id', e.target.value)} required>
                       <option value="">Selecione...</option>
                       {locations.map(l => <option key={l.id} value={l.id}>{l.endereco_rua}, {l.endereco_numero} - {l.endereco_cidade}</option>)}
                     </select>
                   </label>
-                  <label className="flex-grow">Data e Hora *
-                    <input type="datetime-local" value={form.data_hora} onChange={e => upd('data_hora', e.target.value)} required />
-                  </label>
                 </div>
+                <label className="flex-grow">Data e Hora *
+                  <input type="datetime-local" value={form.data_hora} onChange={e => upd('data_hora', e.target.value)} required />
+                </label>
               </>
             )}
+
+            {/* Multi-select service pills */}
+            <div style={{ marginBottom: '0.75rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
+                Serviços {!editId && '*'}
+                {form.service_ids.length > 0 && (
+                  <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', color: '#2563eb', fontWeight: 400 }}>
+                    ({form.service_ids.length} selecionado{form.service_ids.length > 1 ? 's' : ''}{totalDuration > 0 ? ` · ${totalDuration} min` : ''})
+                  </span>
+                )}
+              </label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                {services.map(s => {
+                  const selected = form.service_ids.includes(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggleService(s.id)}
+                      style={{
+                        padding: '0.3rem 0.75rem',
+                        borderRadius: '999px',
+                        border: selected ? '2px solid #2563eb' : '1px solid #d1d5db',
+                        background: selected ? '#eff6ff' : '#fff',
+                        color: selected ? '#1d4ed8' : '#374151',
+                        cursor: 'pointer',
+                        fontSize: '0.82rem',
+                        fontWeight: selected ? 600 : 400,
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {s.nome}
+                      {s.duracao_minutos ? ` (${s.duracao_minutos}min)` : ''}
+                      {s.valor ? ` · R$${Number(s.valor).toFixed(2)}` : ''}
+                    </button>
+                  );
+                })}
+                {services.length === 0 && <span style={{ fontSize: '0.82rem', color: '#9ca3af' }}>Nenhum serviço disponível</span>}
+              </div>
+            </div>
+
+            {/* Vehicle field */}
+            <div className="form-row">
+              <label className="flex-grow">Veículo
+                <select value={form.vehicle_id} onChange={e => upd('vehicle_id', e.target.value)}>
+                  <option value="">Nenhum</option>
+                  {vehicles.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.marca} {v.modelo} · {v.placa}{v.cor ? ` · ${v.cor}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex-grow">Quilometragem (km)
+                <input
+                  type="number"
+                  min={0}
+                  value={form.quilometragem}
+                  onChange={e => upd('quilometragem', e.target.value)}
+                  disabled={!form.vehicle_id}
+                  placeholder={form.vehicle_id ? 'Ex: 45000' : '—'}
+                />
+              </label>
+            </div>
+            {selectedFormVehicle && (
+              <div style={{ fontSize: '0.82rem', color: '#4b5563', marginBottom: '0.5rem', padding: '0.4rem 0.6rem', background: '#f3f4f6', borderRadius: '6px' }}>
+                🚗 {selectedFormVehicle.marca} {selectedFormVehicle.modelo} · {selectedFormVehicle.placa}{selectedFormVehicle.cor ? ` · ${selectedFormVehicle.cor}` : ''}
+              </div>
+            )}
+
             <div className="form-row">
               <label className="flex-grow">Valor do Serviço (R$)
                 <input type="number" step="0.01" min="0" value={form.valor_servico} onChange={e => upd('valor_servico', e.target.value)} placeholder="0.00" />
@@ -374,7 +480,7 @@ export default function AppointmentsPage() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.75rem', fontSize: '0.88rem' }}>
             <div><strong>Cliente:</strong> {selected.client?.nome || selected.nome_visitante || '—'}</div>
-            <div><strong>Serviço:</strong> {selected.service?.nome || '—'}</div>
+            <div><strong>Serviço(s):</strong> {getServiceNames(selected)}</div>
             <div><strong>Local:</strong> {selected.location ? `${selected.location.endereco_rua}, ${selected.location.endereco_numero}` : '—'}</div>
             <div><strong>Data/Hora:</strong> {new Date(selected.data_hora).toLocaleString('pt-BR')}</div>
             <div><strong>Duração:</strong> {selected.duracao_minutos} min</div>
@@ -383,6 +489,12 @@ export default function AppointmentsPage() {
             <div><strong>Desconto:</strong> {selected.desconto != null ? money(Number(selected.desconto)) : '—'}</div>
             <div><strong>Valor Final:</strong> {selected.valor_servico != null ? money(valorFinal(selected)) : '—'}</div>
             <div><strong>Pagamento:</strong> {selected.forma_pagamento ? (pagamentoLabel[selected.forma_pagamento] || selected.forma_pagamento) : '—'}</div>
+            {selected.vehicle && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                <strong>Veículo:</strong> 🚗 {selected.vehicle.marca} {selected.vehicle.modelo} · {selected.vehicle.placa}{selected.vehicle.cor ? ` · ${selected.vehicle.cor}` : ''}
+                {selected.quilometragem != null && ` · ${selected.quilometragem.toLocaleString('pt-BR')} km`}
+              </div>
+            )}
           </div>
           {selected.notas && <div style={{ marginTop: '0.5rem', fontSize: '0.88rem' }}><strong>Notas:</strong> {selected.notas}</div>}
         </div>
@@ -404,8 +516,11 @@ export default function AppointmentsPage() {
                 <span className={`badge ${statusBadge[a.status] || 'badge-gray'}`}>{statusLabel[a.status] || a.status}</span>
               </div>
               <div className="item-card-body">
-                <div><strong>{a.service?.nome || '—'}</strong></div>
+                <div><strong>{getServiceNames(a)}</strong></div>
                 <div>👤 {a.client?.nome || a.nome_visitante || '—'}</div>
+                {a.vehicle && (
+                  <div>🚗 {a.vehicle.marca} {a.vehicle.modelo} · {a.vehicle.placa}{a.vehicle.cor ? ` · ${a.vehicle.cor}` : ''}</div>
+                )}
                 {a.location && <div>📍 {a.location.endereco_rua}, {a.location.endereco_numero}</div>}
                 {a.valor_servico != null && (
                   <div style={{ marginTop: '0.35rem' }}>

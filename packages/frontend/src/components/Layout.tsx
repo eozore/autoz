@@ -6,6 +6,7 @@ const navItems = [
   { to: '/dashboard', label: 'Painel', icon: '📊' },
   { to: '/appointments', label: 'Agendamentos', icon: '📅' },
   { to: '/clients', label: 'Clientes', icon: '👥' },
+  { to: '/vehicles', label: 'Veículos', icon: '🚗' },
   { to: '/services', label: 'Serviços', icon: '🔧' },
   { to: '/inventory', label: 'Estoque', icon: '📦' },
   { to: '/bills', label: 'Contas', icon: '💰' },

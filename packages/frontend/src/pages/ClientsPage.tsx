@@ -17,10 +17,12 @@ interface Vehicle {
   modelo: string;
   ano: number;
   placa: string;
+  cor: string | null;
+  quilometragem: number | null;
 }
 
 const emptyClient = { nome: '', email: '', celular: '', data_nascimento: '' };
-const emptyVehicle = { marca: '', modelo: '', ano: '', placa: '' };
+const emptyVehicle = { marca: '', modelo: '', ano: '', placa: '', cor: '', quilometragem: '' };
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
@@ -146,7 +148,7 @@ export default function ClientsPage() {
 
   function startVEdit(v: Vehicle) {
     setVEditId(v.id);
-    setVForm({ marca: v.marca, modelo: v.modelo, ano: String(v.ano), placa: v.placa });
+    setVForm({ marca: v.marca, modelo: v.modelo, ano: String(v.ano), placa: v.placa, cor: v.cor || '', quilometragem: v.quilometragem != null ? String(v.quilometragem) : '' });
     setShowVForm(true);
   }
 
@@ -155,7 +157,7 @@ export default function ClientsPage() {
     setError('');
     setVSaving(true);
     try {
-      const body = { marca: vForm.marca, modelo: vForm.modelo, ano: parseInt(vForm.ano), placa: vForm.placa };
+      const body = { marca: vForm.marca, modelo: vForm.modelo, ano: parseInt(vForm.ano), placa: vForm.placa, cor: vForm.cor || null, quilometragem: vForm.quilometragem ? parseInt(vForm.quilometragem) : null };
       if (vEditId) {
         await api.put(`/vehicles/${vEditId}`, body);
       } else {
@@ -194,6 +196,8 @@ export default function ClientsPage() {
               <label>Modelo *<input value={vForm.modelo} onChange={e => setVForm(p => ({ ...p, modelo: e.target.value }))} required /></label>
               <label>Ano *<input type="number" value={vForm.ano} onChange={e => setVForm(p => ({ ...p, ano: e.target.value }))} required /></label>
               <label>Placa *<input value={vForm.placa} onChange={e => setVForm(p => ({ ...p, placa: e.target.value }))} required /></label>
+              <label>Cor<input value={vForm.cor} onChange={e => setVForm(p => ({ ...p, cor: e.target.value }))} placeholder="Ex: Preto, Branco..." /></label>
+              <label>Quilometragem (km)<input type="number" min={0} value={vForm.quilometragem} onChange={e => setVForm(p => ({ ...p, quilometragem: e.target.value }))} placeholder="Ex: 45000" /></label>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.65rem' }}>
               <button type="submit" className="btn btn-sm btn-primary" disabled={vSaving}>{vSaving ? 'Salvando...' : 'Salvar'}</button>
@@ -210,7 +214,7 @@ export default function ClientsPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <div>
                     <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{v.marca} {v.modelo}</div>
-                    <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>Ano: {v.ano} · Placa: {v.placa}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>Ano: {v.ano} · Placa: {v.placa}{v.cor ? ` · ${v.cor}` : ''}{v.quilometragem != null ? ` · ${v.quilometragem.toLocaleString('pt-BR')} km` : ''}</div>
                   </div>
                   <div className="row-actions">
                     <button className="btn btn-sm" onClick={() => startVEdit(v)}>Editar</button>

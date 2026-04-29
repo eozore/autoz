@@ -20,7 +20,8 @@ vi.mock('../lib/logger', () => ({
 }));
 
 describe('Graceful Shutdown', () => {
-  let processExitSpy: ReturnType<typeof vi.spyOn>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let processExitSpy: any;
   let server: Server;
   let newSigtermHandlers: Function[];
   let newSigintHandlers: Function[];

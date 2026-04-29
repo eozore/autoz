@@ -151,6 +151,8 @@ export async function createVehicle(
     modelo?: string;
     ano?: number;
     placa?: string;
+    quilometragem?: number;
+    cor?: string;
   }
 ) {
   return prisma.vehicle.create({
@@ -161,6 +163,24 @@ export async function createVehicle(
       modelo: overrides.modelo ?? 'Corolla',
       ano: overrides.ano ?? 2022,
       placa: overrides.placa ?? `ABC${Math.floor(1000 + Math.random() * 8999)}`,
+      quilometragem: overrides.quilometragem ?? null,
+      cor: overrides.cor ?? null,
+    },
+  });
+}
+
+export async function createVehicleOwnershipHistory(
+  vehicleId: string,
+  clientId: string,
+  startedAt?: Date,
+  endedAt?: Date | null,
+) {
+  return prisma.vehicleOwnershipHistory.create({
+    data: {
+      vehicle_id: vehicleId,
+      client_id: clientId,
+      started_at: startedAt ?? new Date(),
+      ...(endedAt !== undefined && { ended_at: endedAt }),
     },
   });
 }
@@ -238,11 +258,13 @@ export async function createBill(
 export async function createAppointment(
   overrides: {
     tenantId: string;
-    serviceId: string;
+    serviceId?: string | null;
     locationId: string;
     clientId?: string | null;
+    vehicleId?: string;
     dataHora?: Date;
     duracaoMinutos?: number;
+    quilometragem?: number;
     status?: AppointmentStatus;
     nomeVisitante?: string | null;
     celularVisitante?: string | null;
@@ -251,14 +273,25 @@ export async function createAppointment(
   return prisma.appointment.create({
     data: {
       tenant_id: overrides.tenantId,
-      service_id: overrides.serviceId,
+      service_id: overrides.serviceId ?? null,
       location_id: overrides.locationId,
       client_id: overrides.clientId ?? null,
+      vehicle_id: overrides.vehicleId ?? null,
       data_hora: overrides.dataHora ?? new Date('2025-06-15T10:00:00Z'),
       duracao_minutos: overrides.duracaoMinutos ?? 60,
+      quilometragem: overrides.quilometragem ?? null,
       status: overrides.status ?? AppointmentStatus.AGENDADO,
       nome_visitante: overrides.nomeVisitante ?? null,
       celular_visitante: overrides.celularVisitante ?? null,
+    },
+  });
+}
+
+export async function createAppointmentService(appointmentId: string, serviceId: string) {
+  return prisma.appointmentService.create({
+    data: {
+      appointment_id: appointmentId,
+      service_id: serviceId,
     },
   });
 }

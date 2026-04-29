@@ -188,3 +188,61 @@ describe('DELETE /bills/:billId', () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ==================== GET /bills — Default date filter (Task 10.2) ====================
+
+describe('GET /bills — default date filter', () => {
+  it('should apply default ±30 day filter when no date params provided', async () => {
+    const { user, tenant } = await createFullTenantSetup();
+    const token = generateTestJwt({ user_id: user.id, tenant_id: user.tenant_id, role: Role.OWNER });
+
+    const now = new Date();
+
+    // Bill within range: due today
+    const today = new Date(now);
+    today.setUTCHours(0, 0, 0, 0);
+    await createBill({ tenantId: tenant.id, descricao: 'Within range', dataVencimento: today });
+
+    // Bill within range: due 15 days from now
+    const inRange = new Date(now);
+    inRange.setDate(inRange.getDate() + 15);
+    inRange.setUTCHours(0, 0, 0, 0);
+    await createBill({ tenantId: tenant.id, descricao: 'Also in range', dataVencimento: inRange });
+
+    // Bill outside range: due 60 days from now
+    const outOfRange = new Date(now);
+    outOfRange.setDate(outOfRange.getDate() + 60);
+    outOfRange.setUTCHours(0, 0, 0, 0);
+    await createBill({ tenantId: tenant.id, descricao: 'Out of range future', dataVencimento: outOfRange });
+
+    // Bill outside range: due 60 days ago
+    const pastOutOfRange = new Date(now);
+    pastOutOfRange.setDate(pastOutOfRange.getDate() - 60);
+    pastOutOfRange.setUTCHours(0, 0, 0, 0);
+    await createBill({ tenantId: tenant.id, descricao: 'Out of range past', dataVencimento: pastOutOfRange });
+
+    const res = await request(app)
+      .get('/bills')
+      .set('Authorization', authHeader(token));
+
+    expect(res.status).toBe(200);
+    // Only the 2 within ±30 days should be returned
+    expect(res.body.data.length).toBe(2);
+  });
+
+  it('should use explicit start and end when provided', async () => {
+    const { user, tenant } = await createFullTenantSetup();
+    const token = generateTestJwt({ user_id: user.id, tenant_id: user.tenant_id, role: Role.OWNER });
+
+    await createBill({ tenantId: tenant.id, descricao: 'March bill', dataVencimento: new Date('2026-03-15') });
+    await createBill({ tenantId: tenant.id, descricao: 'April bill', dataVencimento: new Date('2026-04-15') });
+
+    const res = await request(app)
+      .get('/bills?start=2026-03-01&end=2026-03-31')
+      .set('Authorization', authHeader(token));
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBe(1);
+    expect(res.body.data[0].descricao).toBe('March bill');
+  });
+});

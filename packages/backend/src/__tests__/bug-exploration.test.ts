@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import app from '../index';
 import { createFullTenantSetup } from '../test/factories';

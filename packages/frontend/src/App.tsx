@@ -12,6 +12,7 @@ import ClientsPage from './pages/ClientsPage';
 import InventoryPage from './pages/InventoryPage';
 import BillsPage from './pages/BillsPage';
 import AppointmentsPage from './pages/AppointmentsPage';
+import VehiclesPage from './pages/VehiclesPage';
 import PublicPage from './pages/PublicPage';
 
 function RootRedirect() {
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/inventory" element={<ProtectedRoute><InventoryPage /></ProtectedRoute>} />
         <Route path="/bills" element={<ProtectedRoute><BillsPage /></ProtectedRoute>} />
         <Route path="/appointments" element={<ProtectedRoute><AppointmentsPage /></ProtectedRoute>} />
+        <Route path="/vehicles" element={<ProtectedRoute><VehiclesPage /></ProtectedRoute>} />
       </Route>
     </Routes>
   );

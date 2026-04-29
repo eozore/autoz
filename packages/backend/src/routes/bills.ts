@@ -4,6 +4,7 @@ import { logger } from '../lib/logger';
 import { createBillSchema, updateBillSchema } from '../schemas/bill';
 import { ZodError } from 'zod';
 import { BillStatus } from '../generated/prisma/enums';
+import { getDefaultDateRange } from '../lib/dateFilter';
 
 const router = Router();
 
@@ -55,10 +56,18 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     if (startDate || endDate) {
+      // Explicit date filter
       const dateFilter: Record<string, Date> = {};
       if (startDate) dateFilter.gte = new Date(startDate);
       if (endDate) dateFilter.lte = new Date(endDate);
       where.data_vencimento = dateFilter;
+    } else {
+      // Default ±30 day filter
+      const defaultRange = getDefaultDateRange();
+      where.data_vencimento = {
+        gte: defaultRange.start,
+        lte: defaultRange.end,
+      };
     }
 
     const bills = await prisma.bill.findMany({

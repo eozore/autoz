@@ -12,9 +12,9 @@ RUN npm ci --workspace=packages/backend
 # Copy backend source
 COPY packages/backend/ packages/backend/
 
-# Generate Prisma client
+# Generate Prisma client (dummy URL — generate only reads schema, does not connect)
 WORKDIR /app/packages/backend
-RUN npx prisma generate
+RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
 
 # Build TypeScript
 RUN npm run build
