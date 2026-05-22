@@ -40,6 +40,7 @@ interface RegisterData {
 
 interface AuthResponse {
   token: string;
+  refresh_token: string;
   user: User;
 }
 
@@ -56,9 +57,9 @@ function decodeJwt(token: string): TokenPayload | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('token'));
   const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem('user');
+    const stored = sessionStorage.getItem('user');
     return stored ? JSON.parse(stored) : null;
   });
 
@@ -67,8 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (token) {
       const payload = decodeJwt(token);
       if (!payload || payload.exp * 1000 < Date.now()) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        sessionStorage.removeItem('token');
+        sessionStorage.removeItem('refresh_token');
+        sessionStorage.removeItem('user');
         setToken(null);
         setUser(null);
         return;
@@ -83,15 +85,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setTokenAndUser = useCallback((newToken: string, newUser: User) => {
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(newUser));
+    sessionStorage.setItem('token', newToken);
+    sessionStorage.setItem('user', JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('refresh_token');
+    sessionStorage.removeItem('user');
     setToken(null);
     setUser(null);
     navigate('/login');
@@ -99,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, senha: string) => {
     const res = await api.post<AuthResponse>('/auth/login', { email, senha });
+    sessionStorage.setItem('refresh_token', res.refresh_token);
     setTokenAndUser(res.token, res.user);
 
     if (!res.user.tenant_id) {
@@ -110,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(async (data: RegisterData) => {
     const res = await api.post<AuthResponse>('/auth/register', data);
+    sessionStorage.setItem('refresh_token', res.refresh_token);
     setTokenAndUser(res.token, res.user);
 
     if (!res.user.tenant_id) {

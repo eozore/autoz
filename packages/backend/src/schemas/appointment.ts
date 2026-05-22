@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+export const FORMA_PAGAMENTO_VALUES = [
+  'A_VISTA',
+  'PARCELADO',
+  'PIX',
+  'CARTAO_CREDITO',
+  'CARTAO_DEBITO',
+] as const;
+
 export const createAppointmentSchema = z.object({
   client_id: z.string().uuid().nullable().optional(),
   service_id: z.string().uuid('service_id inválido').optional(),
@@ -9,9 +17,9 @@ export const createAppointmentSchema = z.object({
   duracao_minutos: z.number().int().min(1, 'Duração deve ser >= 1'),
   nome_visitante: z.string().nullable().optional(),
   celular_visitante: z.string().nullable().optional(),
-  notas: z.string().nullable().optional(),
+  notas: z.string().max(2000, 'notas: máximo 2000 caracteres').nullable().optional(),
   desconto: z.number().min(0).optional().nullable(),
-  forma_pagamento: z.string().optional().nullable(),
+  forma_pagamento: z.enum(FORMA_PAGAMENTO_VALUES).nullable().optional(),
   valor_servico: z.number().min(0).optional().nullable(),
   vehicle_id: z.string().uuid().nullable().optional(),
   quilometragem: z.number().int().min(0).nullable().optional(),
@@ -28,9 +36,9 @@ export const updateAppointmentSchema = z.object({
   duracao_minutos: z.number().int().min(1).optional(),
   nome_visitante: z.string().nullable().optional(),
   celular_visitante: z.string().nullable().optional(),
-  notas: z.string().nullable().optional(),
+  notas: z.string().max(2000, 'notas: máximo 2000 caracteres').nullable().optional(),
   desconto: z.number().min(0).optional().nullable(),
-  forma_pagamento: z.string().optional().nullable(),
+  forma_pagamento: z.enum(FORMA_PAGAMENTO_VALUES).nullable().optional(),
   valor_servico: z.number().min(0).optional().nullable(),
   vehicle_id: z.string().uuid().nullable().optional(),
   quilometragem: z.number().int().min(0).nullable().optional(),

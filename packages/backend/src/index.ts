@@ -14,7 +14,13 @@ import appointmentsRouter from './routes/appointments';
 import publicRouter from './routes/public';
 import uploadRouter from './routes/upload';
 import dashboardRouter from './routes/dashboard';
+import onboardingRouter from './routes/onboarding';
+import gamificationRouter from './routes/gamification';
+import analyticsRouter from './routes/analytics';
+import faqsRouter from './routes/faqs';
+import settingsRouter from './routes/settings';
 import { authMiddleware } from './middleware/auth';
+import { fileAccessMiddleware } from './middleware/fileAccess';
 import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
 
@@ -40,8 +46,8 @@ app.use(
 
 app.use(express.json());
 
-// Serve uploaded files statically
-app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
+// Serve uploaded files with tenant access verification
+app.use('/uploads', fileAccessMiddleware, express.static(path.resolve(__dirname, '../uploads')));
 
 // Rate limiters — use skip function in test to avoid flaky tests
 const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
@@ -91,6 +97,11 @@ app.use('/bills', authMiddleware, billsRouter);
 app.use('/appointments', authMiddleware, appointmentsRouter);
 app.use('/upload', authMiddleware, uploadRouter);
 app.use('/dashboard', authMiddleware, dashboardRouter);
+app.use('/onboarding', authMiddleware, onboardingRouter);
+app.use('/gamification', authMiddleware, gamificationRouter);
+app.use('/analytics', authMiddleware, analyticsRouter);
+app.use('/faqs', authMiddleware, faqsRouter);
+app.use('/settings', authMiddleware, settingsRouter);
 
 const server = app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);

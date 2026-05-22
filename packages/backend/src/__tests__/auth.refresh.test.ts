@@ -2,48 +2,63 @@ import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import app from '../index';
+import { prisma } from '../test/setup';
 import { createUser, createTenant } from '../test/factories';
-import { generateTestJwt, JWT_SECRET } from '../test/helpers';
+import { generateRefreshToken, hashRefreshToken } from '../lib/refreshToken';
 
 describe('POST /auth/refresh', () => {
-  it('should refresh a valid token and return 200 with a new token', async () => {
+  it('should refresh a valid token and return 200 with new token pair', async () => {
     const user = await createUser();
 
-    const originalToken = generateTestJwt({
-      user_id: user.id,
-      tenant_id: user.tenant_id,
-      role: user.role,
+    // Create a valid refresh token in the DB
+    const rawToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(rawToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await prisma.refreshToken.create({
+      data: {
+        user_id: user.id,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+      },
     });
 
     const res = await request(app)
       .post('/auth/refresh')
-      .send({ token: originalToken });
+      .send({ refresh_token: rawToken });
 
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
+    expect(res.body.refresh_token).toBeDefined();
     expect(typeof res.body.token).toBe('string');
+    expect(typeof res.body.refresh_token).toBe('string');
 
-    // Verify new token has correct claims
+    // Verify new access token has correct claims
     const payload = jwt.decode(res.body.token) as Record<string, unknown>;
     expect(payload.user_id).toBe(user.id);
-    expect(payload.tenant_id).toBeNull();
     expect(payload.role).toBe('OWNER');
   });
 
-  it('should return updated tenant_id if user was assigned to a tenant since token was issued', async () => {
+  it('should return updated tenant_id if user was assigned to a tenant', async () => {
     const tenant = await createTenant();
     const user = await createUser({ tenantId: tenant.id });
 
-    // Generate a token with tenant_id NULL (as if issued before company setup)
-    const oldToken = generateTestJwt({
-      user_id: user.id,
-      tenant_id: null,
-      role: user.role,
+    // Create a valid refresh token in the DB
+    const rawToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(rawToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await prisma.refreshToken.create({
+      data: {
+        user_id: user.id,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+      },
     });
 
     const res = await request(app)
       .post('/auth/refresh')
-      .send({ token: oldToken });
+      .send({ refresh_token: rawToken });
 
     expect(res.status).toBe(200);
 
@@ -54,53 +69,71 @@ describe('POST /auth/refresh', () => {
     expect(payload.role).toBe('OWNER');
   });
 
-  it('should return 401 for an invalid token', async () => {
-    const res = await request(app)
-      .post('/auth/refresh')
-      .send({ token: 'not.a.valid.jwt.token' });
-
-    expect(res.status).toBe(401);
-    expect(res.body.error).toBe('Token inválido ou expirado');
-  });
-
-  it('should return 401 for an expired token', async () => {
+  it('should rotate the refresh token (old token invalidated)', async () => {
     const user = await createUser();
 
-    // Sign a token that is already expired
-    const expiredToken = jwt.sign(
-      { user_id: user.id, tenant_id: null, role: 'OWNER' },
-      JWT_SECRET,
-      { expiresIn: '0s' }
-    );
+    const rawToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(rawToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    // Small delay to ensure the token is expired
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await prisma.refreshToken.create({
+      data: {
+        user_id: user.id,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+      },
+    });
 
+    // First refresh should succeed
     const res = await request(app)
       .post('/auth/refresh')
-      .send({ token: expiredToken });
+      .send({ refresh_token: rawToken });
+
+    expect(res.status).toBe(200);
+
+    // Using the same old token again should fail (rotation)
+    const res2 = await request(app)
+      .post('/auth/refresh')
+      .send({ refresh_token: rawToken });
+
+    expect(res2.status).toBe(401);
+    expect(res2.body.error).toBe('Token inválido ou expirado');
+  });
+
+  it('should return 401 for an invalid refresh token', async () => {
+    const res = await request(app)
+      .post('/auth/refresh')
+      .send({ refresh_token: 'not-a-valid-refresh-token' });
 
     expect(res.status).toBe(401);
     expect(res.body.error).toBe('Token inválido ou expirado');
   });
 
-  it('should return 401 if user no longer exists in the database', async () => {
-    // Generate a token for a non-existent user
-    const fakeToken = generateTestJwt({
-      user_id: '00000000-0000-0000-0000-000000000000',
-      tenant_id: null,
-      role: 'OWNER',
+  it('should return 401 for an expired refresh token', async () => {
+    const user = await createUser();
+
+    const rawToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(rawToken);
+    // Expired 1 hour ago
+    const expiresAt = new Date(Date.now() - 60 * 60 * 1000);
+
+    await prisma.refreshToken.create({
+      data: {
+        user_id: user.id,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+      },
     });
 
     const res = await request(app)
       .post('/auth/refresh')
-      .send({ token: fakeToken });
+      .send({ refresh_token: rawToken });
 
     expect(res.status).toBe(401);
     expect(res.body.error).toBe('Token inválido ou expirado');
   });
 
-  it('should return 400 for missing token in body', async () => {
+  it('should return 400 for missing refresh_token in body', async () => {
     const res = await request(app)
       .post('/auth/refresh')
       .send({});
@@ -109,10 +142,10 @@ describe('POST /auth/refresh', () => {
     expect(res.body.error).toBe('Dados inválidos');
   });
 
-  it('should return 400 for empty token string', async () => {
+  it('should return 400 for empty refresh_token string', async () => {
     const res = await request(app)
       .post('/auth/refresh')
-      .send({ token: '' });
+      .send({ refresh_token: '' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Dados inválidos');

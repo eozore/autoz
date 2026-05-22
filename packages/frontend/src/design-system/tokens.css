@@ -1,0 +1,120 @@
+/* ===== Design System Tokens =====
+ * Single source of truth for all CSS custom properties.
+ * Colors, spacing, typography, border-radii, and shadows.
+ */
+
+:root {
+  /* ===== Colors ===== */
+
+  /* Primary */
+  --ds-color-primary: #f97316;
+  --ds-color-primary-hover: #ea580c;
+  --ds-color-primary-glow: rgba(249, 115, 22, 0.15);
+
+  /* Secondary */
+  --ds-color-secondary: #fbbf24;
+  --ds-color-secondary-glow: rgba(251, 191, 36, 0.15);
+
+  /* Backgrounds */
+  --ds-color-bg-app: #f8fafc;
+  --ds-color-bg-sidebar: #0f172a;
+  --ds-color-bg-card: #ffffff;
+  --ds-color-bg-muted: #f1f5f9;
+
+  /* Text */
+  --ds-color-text-primary: #0f172a;
+  --ds-color-text-secondary: #475569;
+  --ds-color-text-muted: #94a3b8;
+  --ds-color-text-inverse: #ffffff;
+
+  /* Borders */
+  --ds-color-border-light: #f1f5f9;
+  --ds-color-border-base: #e2e8f0;
+  --ds-color-border-focus: #f97316;
+
+  /* Semantic — Success */
+  --ds-color-success: #10b981;
+  --ds-color-success-bg: #ecfdf5;
+  --ds-color-success-border: #a7f3d0;
+
+  /* Semantic — Warning */
+  --ds-color-warning: #f59e0b;
+  --ds-color-warning-bg: #fef3c7;
+  --ds-color-warning-border: #fde68a;
+
+  /* Semantic — Danger */
+  --ds-color-danger: #ef4444;
+  --ds-color-danger-bg: #fef2f2;
+  --ds-color-danger-border: #fca5a5;
+
+  /* Semantic — Info */
+  --ds-color-info: #3b82f6;
+  --ds-color-info-bg: #eff6ff;
+  --ds-color-info-border: #bfdbfe;
+
+  /* ===== Spacing ===== */
+  --ds-space-0: 0;
+  --ds-space-1: 0.25rem;   /* 4px */
+  --ds-space-2: 0.5rem;    /* 8px */
+  --ds-space-3: 0.75rem;   /* 12px */
+  --ds-space-4: 1rem;      /* 16px */
+  --ds-space-5: 1.25rem;   /* 20px */
+  --ds-space-6: 1.5rem;    /* 24px */
+  --ds-space-8: 2rem;      /* 32px */
+  --ds-space-10: 2.5rem;   /* 40px */
+  --ds-space-12: 3rem;     /* 48px */
+  --ds-space-16: 4rem;     /* 64px */
+  --ds-space-20: 5rem;     /* 80px */
+
+  /* ===== Typography ===== */
+  --ds-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --ds-font-display: 'Outfit', 'Inter', sans-serif;
+
+  /* Font Sizes */
+  --ds-font-size-xs: 0.75rem;    /* 12px */
+  --ds-font-size-sm: 0.875rem;   /* 14px */
+  --ds-font-size-base: 1rem;     /* 16px */
+  --ds-font-size-lg: 1.125rem;   /* 18px */
+  --ds-font-size-xl: 1.25rem;    /* 20px */
+  --ds-font-size-2xl: 1.5rem;    /* 24px */
+  --ds-font-size-3xl: 1.875rem;  /* 30px */
+  --ds-font-size-4xl: 2.25rem;   /* 36px */
+
+  /* Font Weights */
+  --ds-font-weight-normal: 400;
+  --ds-font-weight-medium: 500;
+  --ds-font-weight-semibold: 600;
+  --ds-font-weight-bold: 700;
+  --ds-font-weight-extrabold: 800;
+
+  /* Line Heights */
+  --ds-line-height-tight: 1.25;
+  --ds-line-height-normal: 1.5;
+  --ds-line-height-relaxed: 1.75;
+
+  /* Letter Spacing */
+  --ds-letter-spacing-tight: -0.01em;
+  --ds-letter-spacing-normal: 0;
+  --ds-letter-spacing-wide: 0.05em;
+
+  /* ===== Border Radii ===== */
+  --ds-radius-sm: 6px;
+  --ds-radius-md: 10px;
+  --ds-radius-lg: 14px;
+  --ds-radius-xl: 20px;
+  --ds-radius-full: 9999px;
+
+  /* ===== Shadows ===== */
+  --ds-shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --ds-shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+  --ds-shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  --ds-shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
+
+  /* ===== Transitions ===== */
+  --ds-transition-fast: 0.15s ease;
+  --ds-transition-base: 0.25s ease;
+  --ds-transition-slow: 0.4s ease;
+
+  /* ===== Touch Targets ===== */
+  --ds-touch-target-min: 44px;
+}

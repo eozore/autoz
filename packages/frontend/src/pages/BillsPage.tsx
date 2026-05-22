@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import api, { ApiError } from '../lib/api';
+import { Modal } from '../design-system/components/Modal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 interface Bill {
   id: string;
@@ -24,7 +27,7 @@ export default function BillsPage() {
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<FilterOption>('TODOS');
   const [search, setSearch] = useState('');
-  const [visibleCount, setVisibleCount] = useState(9);
+  const { dialogProps, confirm } = useConfirmDialog();
 
   async function loadBills(apiStatus?: string) {
     try {
@@ -39,7 +42,6 @@ export default function BillsPage() {
 
   function applyFilter(option: FilterOption) {
     setFilterStatus(option);
-    setVisibleCount(9);
     setLoading(true);
     if (option === 'PAGO') {
       loadBills('PAGO');
@@ -118,13 +120,19 @@ export default function BillsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Excluir esta conta?')) return;
-    try {
-      await api.delete(`/bills/${id}`);
-      applyFilter(filterStatus);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
-    }
+    confirm({
+      title: 'Confirmar Exclusão',
+      description: 'Tem certeza que deseja excluir esta conta?',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/bills/${id}`);
+          applyFilter(filterStatus);
+        } catch (err) {
+          setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
+        }
+      },
+    });
   }
 
   function upd(field: string, value: string) { setForm(prev => ({ ...prev, [field]: value })); }
@@ -159,31 +167,30 @@ export default function BillsPage() {
       </div>
 
       <div className="search-bar">
-        <input className="search-input" placeholder="Buscar por descrição..." value={search} onChange={e => { setSearch(e.target.value); setVisibleCount(9); }} />
+        <input className="search-input" placeholder="Buscar por descrição..." value={search} onChange={e => { setSearch(e.target.value); }} />
       </div>
 
       {showForm && (
-        <div className="form-panel">
-          <h2>{editId ? 'Editar Conta' : 'Nova Conta'}</h2>
-          <form onSubmit={handleSubmit}>
-            <label>Descrição *<input value={form.descricao} onChange={e => upd('descricao', e.target.value)} required /></label>
-            <div className="form-row">
-              <label className="flex-grow">Valor (R$) *<input type="number" step="0.01" value={form.valor} onChange={e => upd('valor', e.target.value)} required /></label>
-              <label className="flex-grow">Data de Vencimento *<input type="date" value={form.data_vencimento} onChange={e => upd('data_vencimento', e.target.value)} required /></label>
-            </div>
-            <div className="form-row">
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
-              <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
-            </div>
-          </form>
-        </div>
+        <Modal open={showForm} onClose={() => setShowForm(false)} title={editId ? 'Editar Conta' : 'Nova Conta'}>
+              <form onSubmit={handleSubmit}>
+                <label>Descrição *<input value={form.descricao} onChange={e => upd('descricao', e.target.value)} required /></label>
+                <div className="form-row">
+                  <label className="flex-grow">Valor (R$) *<input type="number" step="0.01" value={form.valor} onChange={e => upd('valor', e.target.value)} required /></label>
+                  <label className="flex-grow">Data de Vencimento *<input type="date" value={form.data_vencimento} onChange={e => upd('data_vencimento', e.target.value)} required /></label>
+                </div>
+                <div className="form-row">
+                  <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
+                  <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
+                </div>
+              </form>
+        </Modal>
       )}
 
       {filtered.length === 0 ? (
         <p className="empty">{search ? 'Nenhuma conta encontrada.' : 'Nenhuma conta cadastrada.'}</p>
       ) : (
         <div className="item-cards">
-          {filtered.slice(0, visibleCount).map(b => {
+          {filtered.map(b => {
             const isOverdue = b.status === 'PENDENTE' && new Date(b.data_vencimento) < new Date();
             const badgeClass = b.status === 'PAGO' ? 'badge-green' : isOverdue ? 'badge-red' : 'badge-yellow';
             const badgeText = b.status === 'PAGO' ? 'Pago' : isOverdue ? 'Vencido' : 'Pendente';
@@ -222,11 +229,7 @@ export default function BillsPage() {
         </div>
       )}
 
-      {visibleCount < filtered.length && (
-        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-          <button className="btn" onClick={() => setVisibleCount(v => v + 9)}>Ver mais</button>
-        </div>
-      )}
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

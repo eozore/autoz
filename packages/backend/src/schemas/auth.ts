@@ -1,8 +1,21 @@
 import { z } from 'zod';
 
+export const passwordSchema = z
+  .string()
+  .min(8, 'Senha deve ter no mínimo 8 caracteres')
+  .refine((val) => /[A-Z]/.test(val), {
+    message: 'Senha deve conter pelo menos 1 letra maiúscula',
+  })
+  .refine((val) => /[0-9]/.test(val), {
+    message: 'Senha deve conter pelo menos 1 número',
+  })
+  .refine((val) => /[!@#$%^&*()_+\-=\[\]{}|;:',.<>?/~`]/.test(val), {
+    message: 'Senha deve conter pelo menos 1 caractere especial',
+  });
+
 export const registerSchema = z.object({
   email: z.string().email('Email inválido'),
-  senha: z.string().min(8, 'Senha deve ter no mínimo 8 caracteres'),
+  senha: passwordSchema,
   nome: z.string().min(1, 'Nome é obrigatório'),
   idade: z.number().int('Idade deve ser um número inteiro').min(18, 'Idade mínima é 18 anos'),
   celular: z
@@ -21,7 +34,7 @@ export const loginSchema = z.object({
 export type LoginInput = z.infer<typeof loginSchema>;
 
 export const refreshSchema = z.object({
-  token: z.string().min(1, 'Token é obrigatório'),
+  refresh_token: z.string().min(1, 'Refresh token é obrigatório'),
 });
 
 export type RefreshInput = z.infer<typeof refreshSchema>;

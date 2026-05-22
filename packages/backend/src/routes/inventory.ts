@@ -253,4 +253,29 @@ router.post(
   },
 );
 
+/**
+ * PATCH /inventory/:id/restore — Restore a soft-deleted inventory item.
+ */
+router.patch('/:id/restore', async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const tenantId = req.context!.tenant_id!;
+    const record = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT id FROM inventory_items WHERE id = $1 AND tenant_id = $2`,
+      req.params.id, tenantId
+    );
+    if (!record || record.length === 0) {
+      res.status(404).json({ error: 'Registro não encontrado' });
+      return;
+    }
+    await prisma.$executeRawUnsafe(
+      `UPDATE inventory_items SET deleted_at = NULL WHERE id = $1`,
+      req.params.id
+    );
+    res.json({ message: 'Registro restaurado' });
+  } catch (err) {
+    logger.error('Restore inventory item error', { error: String(err) });
+    res.status(500).json({ error: 'Erro ao restaurar registro' });
+  }
+});
+
 export default router;

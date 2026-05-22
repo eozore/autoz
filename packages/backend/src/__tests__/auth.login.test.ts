@@ -5,7 +5,7 @@ import app from '../index';
 
 const VALID_USER = {
   email: 'login-test@test.com',
-  senha: 'password123',
+  senha: 'Password123!',
   nome: 'João Silva',
   idade: 25,
   celular: '+5511999999999',

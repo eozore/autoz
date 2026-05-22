@@ -1,5 +1,8 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import api, { ApiError, uploadFile } from '../lib/api';
+import { Modal } from '../design-system/components/Modal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 interface Location {
   id: string;
@@ -45,6 +48,7 @@ export default function LocationsPage() {
   const [companyForm, setCompanyForm] = useState({ nome: '', descricao: '' });
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [companySaving, setCompanySaving] = useState(false);
+  const { dialogProps, confirm } = useConfirmDialog();
 
   async function load() {
     try {
@@ -124,13 +128,19 @@ export default function LocationsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Excluir esta loja?')) return;
-    try {
-      await api.delete(`/companies/locations/${id}`);
-      await load();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
-    }
+    confirm({
+      title: 'Confirmar Exclusão',
+      description: 'Tem certeza que deseja excluir esta loja?',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/companies/locations/${id}`);
+          await load();
+        } catch (err) {
+          setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
+        }
+      },
+    });
   }
 
   function upd(field: string, value: string) { setForm(prev => ({ ...prev, [field]: value })); }
@@ -158,18 +168,17 @@ export default function LocationsPage() {
       )}
 
       {showCompanyEdit && (
-        <div className="form-panel">
-          <h2>Editar Empresa</h2>
-          <form onSubmit={handleCompanySubmit}>
-            <label>Nome *<input value={companyForm.nome} onChange={e => setCompanyForm(p => ({ ...p, nome: e.target.value }))} required /></label>
-            <label>Descrição<textarea value={companyForm.descricao} onChange={e => setCompanyForm(p => ({ ...p, descricao: e.target.value }))} rows={2} /></label>
-            <label>Logo (JPEG/PNG)<input type="file" accept="image/jpeg,image/png" onChange={e => setLogoFile(e.target.files?.[0] ?? null)} /></label>
-            <div className="form-row">
-              <button type="submit" className="btn btn-primary" disabled={companySaving}>{companySaving ? 'Salvando...' : 'Salvar'}</button>
-              <button type="button" className="btn" onClick={() => setShowCompanyEdit(false)}>Cancelar</button>
-            </div>
-          </form>
-        </div>
+        <Modal open={showCompanyEdit} onClose={() => setShowCompanyEdit(false)} title="Editar Empresa">
+              <form onSubmit={handleCompanySubmit}>
+                <label>Nome *<input value={companyForm.nome} onChange={e => setCompanyForm(p => ({ ...p, nome: e.target.value }))} required /></label>
+                <label>Descrição<textarea value={companyForm.descricao} onChange={e => setCompanyForm(p => ({ ...p, descricao: e.target.value }))} rows={2} /></label>
+                <label>Logo (JPEG/PNG)<input type="file" accept="image/jpeg,image/png" onChange={e => setLogoFile(e.target.files?.[0] ?? null)} /></label>
+                <div className="form-row">
+                  <button type="submit" className="btn btn-primary" disabled={companySaving}>{companySaving ? 'Salvando...' : 'Salvar'}</button>
+                  <button type="button" className="btn" onClick={() => setShowCompanyEdit(false)}>Cancelar</button>
+                </div>
+              </form>
+        </Modal>
       )}
 
       <div className="page-header">
@@ -179,32 +188,31 @@ export default function LocationsPage() {
       {error && <p className="error-msg">{error}</p>}
 
       {showForm && (
-        <div className="form-panel">
-          <h2>{editId ? 'Editar Loja' : 'Nova Loja'}</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="form-row">
-              <label className="flex-grow">Rua *<input value={form.rua} onChange={e => upd('rua', e.target.value)} required /></label>
-              <label>Número *<input value={form.numero} onChange={e => upd('numero', e.target.value)} required /></label>
-            </div>
-            <label>Complemento<input value={form.complemento} onChange={e => upd('complemento', e.target.value)} /></label>
-            <div className="form-row">
-              <label className="flex-grow">Bairro *<input value={form.bairro} onChange={e => upd('bairro', e.target.value)} required /></label>
-              <label className="flex-grow">Cidade *<input value={form.cidade} onChange={e => upd('cidade', e.target.value)} required /></label>
-            </div>
-            <div className="form-row">
-              <label>Estado *<input value={form.estado} onChange={e => upd('estado', e.target.value)} required maxLength={2} /></label>
-              <label>CEP *<input value={form.cep} onChange={e => upd('cep', e.target.value)} required /></label>
-            </div>
-            <div className="form-row">
-              <label className="flex-grow">Horário de Abertura<input type="time" value={form.horario_abertura} onChange={e => upd('horario_abertura', e.target.value)} /></label>
-              <label className="flex-grow">Horário de Fechamento<input type="time" value={form.horario_fechamento} onChange={e => upd('horario_fechamento', e.target.value)} /></label>
-            </div>
-            <div className="form-row">
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
-              <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
-            </div>
-          </form>
-        </div>
+        <Modal open={showForm} onClose={() => setShowForm(false)} title={editId ? 'Editar Loja' : 'Nova Loja'}>
+              <form onSubmit={handleSubmit}>
+                <div className="form-row">
+                  <label className="flex-grow">Rua *<input value={form.rua} onChange={e => upd('rua', e.target.value)} required /></label>
+                  <label>Número *<input value={form.numero} onChange={e => upd('numero', e.target.value)} required /></label>
+                </div>
+                <label>Complemento<input value={form.complemento} onChange={e => upd('complemento', e.target.value)} /></label>
+                <div className="form-row">
+                  <label className="flex-grow">Bairro *<input value={form.bairro} onChange={e => upd('bairro', e.target.value)} required /></label>
+                  <label className="flex-grow">Cidade *<input value={form.cidade} onChange={e => upd('cidade', e.target.value)} required /></label>
+                </div>
+                <div className="form-row">
+                  <label>Estado *<input value={form.estado} onChange={e => upd('estado', e.target.value)} required maxLength={2} /></label>
+                  <label>CEP *<input value={form.cep} onChange={e => upd('cep', e.target.value)} required /></label>
+                </div>
+                <div className="form-row">
+                  <label className="flex-grow">Horário de Abertura<input type="time" value={form.horario_abertura} onChange={e => upd('horario_abertura', e.target.value)} /></label>
+                  <label className="flex-grow">Horário de Fechamento<input type="time" value={form.horario_fechamento} onChange={e => upd('horario_fechamento', e.target.value)} /></label>
+                </div>
+                <div className="form-row">
+                  <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
+                  <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
+                </div>
+              </form>
+        </Modal>
       )}
 
       {locations.length === 0 ? (
@@ -246,6 +254,8 @@ export default function LocationsPage() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

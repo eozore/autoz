@@ -40,7 +40,7 @@ describe('POST /upload', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.url).toBeDefined();
-    expect(res.body.url).toMatch(/^\/uploads\/.+\.jpg$/);
+    expect(res.body.url).toMatch(/^\/uploads\/.+\/.+\.jpg$/);
   });
 
   it('should reject non-JPEG file with 400', async () => {

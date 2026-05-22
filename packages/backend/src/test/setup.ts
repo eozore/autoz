@@ -27,6 +27,7 @@ const TABLE_NAMES = [
   'services',
   'locations',
   'companies',
+  'refresh_tokens',
   'users',
   'tenants',
 ] as const;

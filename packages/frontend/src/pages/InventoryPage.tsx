@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import api, { ApiError } from '../lib/api';
+import SearchableSelect from '../components/SearchableSelect';
+import { Modal } from '../design-system/components/Modal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 interface InventoryItem {
   id: string;
@@ -42,6 +46,7 @@ export default function InventoryPage() {
   const [showMov, setShowMov] = useState(false);
   const [movForm, setMovForm] = useState(emptyMov);
   const [movSaving, setMovSaving] = useState(false);
+  const { dialogProps, confirm } = useConfirmDialog();
 
   const filtered = useMemo(() => {
     let result = items;
@@ -139,14 +144,20 @@ export default function InventoryPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Excluir este item?')) return;
-    try {
-      await api.delete(`/inventory/${id}`);
-      await loadItems(filterType || undefined);
-      await loadSummary();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
-    }
+    confirm({
+      title: 'Confirmar Exclusão',
+      description: 'Tem certeza que deseja excluir este item?',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/inventory/${id}`);
+          await loadItems(filterType || undefined);
+          await loadSummary();
+        } catch (err) {
+          setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
+        }
+      },
+    });
   }
 
   async function handleMovSubmit(e: FormEvent) {
@@ -204,62 +215,63 @@ export default function InventoryPage() {
       </div>
 
       {showMov && (
-        <div className="form-panel">
-          <h2>Nova Movimentação</h2>
-          <form onSubmit={handleMovSubmit}>
-            <div className="form-row">
-              <label className="flex-grow">Item *
-                <select value={movForm.item_id} onChange={e => setMovForm(p => ({ ...p, item_id: e.target.value }))} required>
-                  <option value="">Selecione...</option>
-                  {items.map(i => <option key={i.id} value={i.id}>{i.nome} ({i.tipo})</option>)}
-                </select>
-              </label>
-              <label>Tipo *
-                <select value={movForm.tipo} onChange={e => setMovForm(p => ({ ...p, tipo: e.target.value }))}>
-                  <option value="ENTRADA">Entrada</option>
-                  <option value="SAIDA_USO">Saída Uso</option>
-                  <option value="SAIDA_VENDA">Saída Venda</option>
-                </select>
-              </label>
-              <label>Quantidade *<input type="number" min={1} value={movForm.quantidade} onChange={e => setMovForm(p => ({ ...p, quantidade: e.target.value }))} required /></label>
-            </div>
-            <label>Notas<input value={movForm.notas} onChange={e => setMovForm(p => ({ ...p, notas: e.target.value }))} /></label>
-            <div className="form-row">
-              <button type="submit" className="btn btn-primary" disabled={movSaving}>{movSaving ? 'Salvando...' : 'Registrar'}</button>
-              <button type="button" className="btn" onClick={() => setShowMov(false)}>Cancelar</button>
-            </div>
-          </form>
-        </div>
+        <Modal open={showMov} onClose={() => setShowMov(false)} title="Nova Movimentação">
+              <form onSubmit={handleMovSubmit}>
+                <div className="form-row">
+                  <label className="flex-grow">Item *
+                    <SearchableSelect
+                      options={items.map(i => ({ value: i.id, label: `${i.nome} (${i.tipo})` }))}
+                      value={movForm.item_id}
+                      onChange={val => setMovForm(p => ({ ...p, item_id: val }))}
+                      placeholder="Selecione o item..."
+                      required
+                    />
+                  </label>
+                  <label>Tipo *
+                    <select value={movForm.tipo} onChange={e => setMovForm(p => ({ ...p, tipo: e.target.value }))}>
+                      <option value="ENTRADA">Entrada</option>
+                      <option value="SAIDA_USO">Saída Uso</option>
+                      <option value="SAIDA_VENDA">Saída Venda</option>
+                    </select>
+                  </label>
+                  <label>Quantidade *<input type="number" min={1} value={movForm.quantidade} onChange={e => setMovForm(p => ({ ...p, quantidade: e.target.value }))} required /></label>
+                </div>
+                <label>Notas<input value={movForm.notas} onChange={e => setMovForm(p => ({ ...p, notas: e.target.value }))} /></label>
+                <div className="form-row">
+                  <button type="submit" className="btn btn-primary" disabled={movSaving}>{movSaving ? 'Salvando...' : 'Registrar'}</button>
+                  <button type="button" className="btn" onClick={() => setShowMov(false)}>Cancelar</button>
+                </div>
+              </form>
+        </Modal>
       )}
 
       {showForm && (
-        <div className="form-panel">
-          <h2>{editId ? 'Editar Item' : 'Novo Item'}</h2>
-          <form onSubmit={handleSubmit}>
-            <label>Nome *<input value={form.nome} onChange={e => upd('nome', e.target.value)} required /></label>
-            <label>Descrição<input value={form.descricao} onChange={e => upd('descricao', e.target.value)} /></label>
-            <div className="form-row">
-              <label className="flex-grow">Custo (R$) *<input type="number" step="0.01" value={form.custo} onChange={e => upd('custo', e.target.value)} required /></label>
-              <label className="flex-grow">Valor Venda (R$) *<input type="number" step="0.01" value={form.valor_venda} onChange={e => upd('valor_venda', e.target.value)} required /></label>
-            </div>
-            <div className="form-row">
-              {!editId && (
-                <label>Tipo *
-                  <select value={form.tipo} onChange={e => upd('tipo', e.target.value)}>
-                    <option value="USO">Uso</option>
-                    <option value="VENDA">Venda</option>
-                  </select>
-                </label>
-              )}
-              {!editId && <label>Quantidade Inicial *<input type="number" min={0} value={form.quantidade_inicial} onChange={e => upd('quantidade_inicial', e.target.value)} required /></label>}
-              <label>Quantidade Mínima<input type="number" min={0} value={form.quantidade_minima} onChange={e => upd('quantidade_minima', e.target.value)} /></label>
-            </div>
-            <div className="form-row">
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
-              <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
-            </div>
-          </form>
-        </div>
+        <Modal open={showForm} onClose={() => setShowForm(false)} title={editId ? 'Editar Item' : 'Novo Item'}>
+              <form onSubmit={handleSubmit}>
+                <label>Nome *<input value={form.nome} onChange={e => upd('nome', e.target.value)} required /></label>
+                <label>Descrição<input value={form.descricao} onChange={e => upd('descricao', e.target.value)} /></label>
+                <div className="form-row">
+                  <label className="flex-grow">Custo (R$) *<input type="number" step="0.01" value={form.custo} onChange={e => upd('custo', e.target.value)} required /></label>
+                  <label className="flex-grow">Valor Venda (R$) *<input type="number" step="0.01" value={form.valor_venda} onChange={e => upd('valor_venda', e.target.value)} required /></label>
+                </div>
+                <div className="form-row">
+                  {!editId && (
+                    <label>Tipo *
+                      <select value={form.tipo} onChange={e => upd('tipo', e.target.value)}>
+                        <option value="USO">Uso</option>
+                        <option value="VENDA">Venda</option>
+                      </select>
+                    </label>
+                  )}
+                  {!editId && <label>Quantidade Inicial *<input type="number" min={0} value={form.quantidade_inicial} onChange={e => upd('quantidade_inicial', e.target.value)} required /></label>}
+                  <label>Quantidade Mínima<input type="number" min={0} value={form.quantidade_minima} onChange={e => upd('quantidade_minima', e.target.value)} /></label>
+                </div>
+                <div className="form-row">
+                  <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
+                  <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
+                </div>
+              </form>
+        </Modal>
       )}
 
       {filtered.length === 0 ? (
@@ -313,6 +325,8 @@ export default function InventoryPage() {
           <button className="btn" onClick={loadMore}>Ver mais</button>
         </div>
       )}
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

@@ -1,5 +1,12 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import api, { ApiError } from '../lib/api';
+import SearchableSelect from '../components/SearchableSelect';
+import SearchableMultiSelect from '../components/SearchableMultiSelect';
+import { DetailDrawer } from '../components/DetailDrawer';
+import { Modal } from '../design-system/components/Modal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
+import { StatusBadge, type AppointmentStatus } from '../components/StatusBadge';
 
 interface Appointment {
   id: string;
@@ -28,7 +35,7 @@ interface Client { id: string; nome: string; }
 interface Service { id: string; nome: string; duracao_minutos: number; valor?: number; }
 interface Location { id: string; endereco_rua: string; endereco_numero: string; endereco_cidade: string; }
 interface Company { id: string; locations: Location[]; }
-interface Vehicle { id: string; marca: string; modelo: string; placa: string; cor: string | null; }
+interface Vehicle { id: string; client_id?: string | null; marca: string; modelo: string; placa: string; cor: string | null; }
 
 const statusBadge: Record<string, string> = {
   AGENDADO: 'badge-blue',
@@ -102,6 +109,7 @@ export default function AppointmentsPage() {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('TODOS');
+  const { dialogProps, confirm } = useConfirmDialog();
 
   // Create/Edit form
   const [showForm, setShowForm] = useState(false);
@@ -111,12 +119,15 @@ export default function AppointmentsPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [visibleCount, setVisibleCount] = useState(9);
   const [form, setForm] = useState<FormState>({
     client_id: '', service_ids: [], location_id: '', data_hora: '',
     notas: '', valor_servico: '', desconto: '', forma_pagamento: '',
     vehicle_id: '', quilometragem: '',
   });
+  const filteredVehicles = useMemo(() => {
+    if (!form.client_id) return vehicles;
+    return vehicles.filter(v => v.client_id === form.client_id);
+  }, [vehicles, form.client_id]);
 
   const filtered = useMemo(() => {
     let result = appointments;
@@ -185,7 +196,7 @@ export default function AppointmentsPage() {
 
   useEffect(() => { loadAppointments(); }, []);
 
-  function handleFilter() { setVisibleCount(9); loadAppointments(); }
+  function handleFilter() { loadAppointments(); }
 
   async function openCreateForm() {
     await loadFormData();
@@ -219,16 +230,6 @@ export default function AppointmentsPage() {
       quilometragem: a.quilometragem != null ? String(a.quilometragem) : '',
     });
     setShowForm(true);
-  }
-
-  function toggleService(serviceId: string) {
-    setForm(prev => {
-      const already = prev.service_ids.includes(serviceId);
-      const newIds = already
-        ? prev.service_ids.filter(id => id !== serviceId)
-        : [...prev.service_ids, serviceId];
-      return { ...prev, service_ids: newIds };
-    });
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -272,24 +273,36 @@ export default function AppointmentsPage() {
   }
 
   async function handleCancel(id: string) {
-    if (!confirm('Cancelar este agendamento?')) return;
-    try {
-      await api.patch(`/appointments/${id}/cancel`);
-      await loadAppointments();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao cancelar');
-    }
+    confirm({
+      title: 'Cancelar Agendamento',
+      description: 'Tem certeza que deseja cancelar este agendamento?',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.patch(`/appointments/${id}/cancel`);
+          await loadAppointments();
+        } catch (err) {
+          setError(err instanceof ApiError ? err.message : 'Erro ao cancelar');
+        }
+      },
+    });
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Excluir este agendamento permanentemente?')) return;
-    try {
-      await api.delete(`/appointments/${id}`);
-      setSelectedId(null);
-      await loadAppointments();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
-    }
+    confirm({
+      title: 'Confirmar Exclusão',
+      description: 'Excluir este agendamento permanentemente?',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/appointments/${id}`);
+          setSelectedId(null);
+          await loadAppointments();
+        } catch (err) {
+          setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
+        }
+      },
+    });
   }
 
   async function handleStatusChange(id: string, newStatus: string) {
@@ -341,7 +354,7 @@ export default function AppointmentsPage() {
           <button
             key={opt.key}
             className={`filter-pill${statusFilter === opt.key ? ' active' : ''}${opt.key === 'CANCELADO' ? ' danger' : ''}`}
-            onClick={() => { setStatusFilter(opt.key); setVisibleCount(9); }}
+            onClick={() => { setStatusFilter(opt.key); }}
           >
             {opt.label}
           </button>
@@ -349,156 +362,158 @@ export default function AppointmentsPage() {
       </div>
 
       <div className="search-bar">
-        <input className="search-input" placeholder="Buscar por cliente, serviço ou notas..." value={search} onChange={e => { setSearch(e.target.value); setVisibleCount(9); }} />
+        <input className="search-input" placeholder="Buscar por cliente, serviço ou notas..." value={search} onChange={e => { setSearch(e.target.value); }} />
       </div>
 
       {showForm && (
-        <div className="form-panel">
-          <h2>{editId ? 'Editar Agendamento' : 'Novo Agendamento'}</h2>
-          <form onSubmit={handleSubmit}>
-            {!editId && (
-              <>
-                <div className="form-row">
-                  <label className="flex-grow">Cliente
-                    <select value={form.client_id} onChange={e => upd('client_id', e.target.value)}>
-                      <option value="">Nenhum (visitante)</option>
-                      {clients.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                    </select>
+        <Modal open={showForm} onClose={() => { setShowForm(false); setEditId(null); }} title={editId ? 'Editar Agendamento' : 'Novo Agendamento'}>
+              <form onSubmit={handleSubmit}>
+                {!editId && (
+                  <>
+                    <div className="form-row">
+                      <label className="flex-grow">Cliente
+                        <SearchableSelect
+                          options={[
+                            { value: '', label: 'Nenhum (visitante)' },
+                            ...clients.map(c => ({ value: c.id, label: c.nome }))
+                          ]}
+                          value={form.client_id}
+                          onChange={val => upd('client_id', val)}
+                          placeholder="Selecione o cliente..."
+                        />
+                      </label>
+                      <label className="flex-grow">Localização *
+                        <SearchableSelect
+                          options={locations.map(l => ({ value: l.id, label: `${l.endereco_rua}, ${l.endereco_numero} - ${l.endereco_cidade}` }))}
+                          value={form.location_id}
+                          onChange={val => upd('location_id', val)}
+                          placeholder="Selecione a loja..."
+                          required
+                        />
+                      </label>
+                    </div>
+                    <label className="flex-grow">Data e Hora *
+                      <input type="datetime-local" value={form.data_hora} onChange={e => upd('data_hora', e.target.value)} required />
+                    </label>
+                  </>
+                )}
+
+                {/* Multi-select service dropdown */}
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
+                    Serviços {!editId && '*'}
+                    {form.service_ids.length > 0 && (
+                      <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', color: '#2563eb', fontWeight: 400 }}>
+                        ({form.service_ids.length} selecionado{form.service_ids.length > 1 ? 's' : ''}{totalDuration > 0 ? ` · ${totalDuration} min` : ''})
+                      </span>
+                    )}
                   </label>
-                  <label className="flex-grow">Localização *
-                    <select value={form.location_id} onChange={e => upd('location_id', e.target.value)} required>
+                  <SearchableMultiSelect
+                    options={services.map(s => ({
+                      value: s.id,
+                      label: s.nome,
+                      meta: `${s.duracao_minutos} min${s.valor ? ` · R$ ${Number(s.valor).toFixed(2)}` : ''}`,
+                    }))}
+                    value={form.service_ids}
+                    onChange={(ids) => setForm(prev => ({ ...prev, service_ids: ids }))}
+                    placeholder="Selecione os serviços..."
+                    required={!editId}
+                  />
+                </div>
+
+                {/* Vehicle field */}
+                <div className="form-row">
+                  <label className="flex-grow">Veículo
+                    <SearchableSelect
+                      options={[
+                        { value: '', label: 'Nenhum' },
+                        ...filteredVehicles.map(v => ({ value: v.id, label: `${v.marca} ${v.modelo} · ${v.placa}${v.cor ? ` · ${v.cor}` : ''}` }))
+                      ]}
+                      value={form.vehicle_id || ''}
+                      onChange={val => upd('vehicle_id', val)}
+                      placeholder="Selecione o veículo..."
+                    />
+                  </label>
+                  <label className="flex-grow">Quilometragem (km)
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.quilometragem}
+                      onChange={e => upd('quilometragem', e.target.value)}
+                      disabled={!form.vehicle_id}
+                      placeholder={form.vehicle_id ? 'Ex: 45000' : '—'}
+                    />
+                  </label>
+                </div>
+                {selectedFormVehicle && (
+                  <div style={{ fontSize: '0.82rem', color: '#4b5563', marginBottom: '0.5rem', padding: '0.4rem 0.6rem', background: '#f3f4f6', borderRadius: '6px' }}>
+                    🚗 {selectedFormVehicle.marca} {selectedFormVehicle.modelo} · {selectedFormVehicle.placa}{selectedFormVehicle.cor ? ` · ${selectedFormVehicle.cor}` : ''}
+                  </div>
+                )}
+
+                <div className="form-row">
+                  <label className="flex-grow">Valor do Serviço (R$)
+                    <input type="number" step="0.01" min="0" value={form.valor_servico} onChange={e => upd('valor_servico', e.target.value)} placeholder="0.00" />
+                  </label>
+                  <label className="flex-grow">Desconto (R$)
+                    <input type="number" step="0.01" min="0" value={form.desconto} onChange={e => upd('desconto', e.target.value)} placeholder="0.00" />
+                  </label>
+                  <label className="flex-grow">Forma de Pagamento
+                    <select value={form.forma_pagamento} onChange={e => upd('forma_pagamento', e.target.value)}>
                       <option value="">Selecione...</option>
-                      {locations.map(l => <option key={l.id} value={l.id}>{l.endereco_rua}, {l.endereco_numero} - {l.endereco_cidade}</option>)}
+                      <option value="A_VISTA">À Vista</option>
+                      <option value="PARCELADO">Parcelado</option>
                     </select>
                   </label>
                 </div>
-                <label className="flex-grow">Data e Hora *
-                  <input type="datetime-local" value={form.data_hora} onChange={e => upd('data_hora', e.target.value)} required />
-                </label>
-              </>
-            )}
-
-            {/* Multi-select service pills */}
-            <div style={{ marginBottom: '0.75rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 500 }}>
-                Serviços {!editId && '*'}
-                {form.service_ids.length > 0 && (
-                  <span style={{ marginLeft: '0.5rem', fontSize: '0.8rem', color: '#2563eb', fontWeight: 400 }}>
-                    ({form.service_ids.length} selecionado{form.service_ids.length > 1 ? 's' : ''}{totalDuration > 0 ? ` · ${totalDuration} min` : ''})
-                  </span>
-                )}
-              </label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                {services.map(s => {
-                  const selected = form.service_ids.includes(s.id);
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => toggleService(s.id)}
-                      style={{
-                        padding: '0.3rem 0.75rem',
-                        borderRadius: '999px',
-                        border: selected ? '2px solid #2563eb' : '1px solid #d1d5db',
-                        background: selected ? '#eff6ff' : '#fff',
-                        color: selected ? '#1d4ed8' : '#374151',
-                        cursor: 'pointer',
-                        fontSize: '0.82rem',
-                        fontWeight: selected ? 600 : 400,
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      {s.nome}
-                      {s.duracao_minutos ? ` (${s.duracao_minutos}min)` : ''}
-                      {s.valor ? ` · R$${Number(s.valor).toFixed(2)}` : ''}
-                    </button>
-                  );
-                })}
-                {services.length === 0 && <span style={{ fontSize: '0.82rem', color: '#9ca3af' }}>Nenhum serviço disponível</span>}
-              </div>
-            </div>
-
-            {/* Vehicle field */}
-            <div className="form-row">
-              <label className="flex-grow">Veículo
-                <select value={form.vehicle_id} onChange={e => upd('vehicle_id', e.target.value)}>
-                  <option value="">Nenhum</option>
-                  {vehicles.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {v.marca} {v.modelo} · {v.placa}{v.cor ? ` · ${v.cor}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex-grow">Quilometragem (km)
-                <input
-                  type="number"
-                  min={0}
-                  value={form.quilometragem}
-                  onChange={e => upd('quilometragem', e.target.value)}
-                  disabled={!form.vehicle_id}
-                  placeholder={form.vehicle_id ? 'Ex: 45000' : '—'}
-                />
-              </label>
-            </div>
-            {selectedFormVehicle && (
-              <div style={{ fontSize: '0.82rem', color: '#4b5563', marginBottom: '0.5rem', padding: '0.4rem 0.6rem', background: '#f3f4f6', borderRadius: '6px' }}>
-                🚗 {selectedFormVehicle.marca} {selectedFormVehicle.modelo} · {selectedFormVehicle.placa}{selectedFormVehicle.cor ? ` · ${selectedFormVehicle.cor}` : ''}
-              </div>
-            )}
-
-            <div className="form-row">
-              <label className="flex-grow">Valor do Serviço (R$)
-                <input type="number" step="0.01" min="0" value={form.valor_servico} onChange={e => upd('valor_servico', e.target.value)} placeholder="0.00" />
-              </label>
-              <label className="flex-grow">Desconto (R$)
-                <input type="number" step="0.01" min="0" value={form.desconto} onChange={e => upd('desconto', e.target.value)} placeholder="0.00" />
-              </label>
-              <label className="flex-grow">Forma de Pagamento
-                <select value={form.forma_pagamento} onChange={e => upd('forma_pagamento', e.target.value)}>
-                  <option value="">Selecione...</option>
-                  <option value="A_VISTA">À Vista</option>
-                  <option value="PARCELADO">Parcelado</option>
-                </select>
-              </label>
-            </div>
-            <label>Notas<input value={form.notas} onChange={e => upd('notas', e.target.value)} /></label>
-            <div className="form-row">
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : editId ? 'Salvar' : 'Criar'}</button>
-              <button type="button" className="btn" onClick={() => { setShowForm(false); setEditId(null); }}>Cancelar</button>
-            </div>
-          </form>
-        </div>
+                <label>Notas<input value={form.notas} onChange={e => upd('notas', e.target.value)} /></label>
+                <div className="form-row">
+                  <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : editId ? 'Salvar' : 'Criar'}</button>
+                  <button type="button" className="btn" onClick={() => { setShowForm(false); setEditId(null); }}>Cancelar</button>
+                </div>
+              </form>
+        </Modal>
       )}
 
-      {/* Detail panel */}
-      {selected && (
-        <div className="form-panel" style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <h2>Detalhes do Agendamento</h2>
-            <button className="btn btn-sm" onClick={() => setSelectedId(null)}>✕ Fechar</button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.75rem', fontSize: '0.88rem' }}>
-            <div><strong>Cliente:</strong> {selected.client?.nome || selected.nome_visitante || '—'}</div>
-            <div><strong>Serviço(s):</strong> {getServiceNames(selected)}</div>
-            <div><strong>Local:</strong> {selected.location ? `${selected.location.endereco_rua}, ${selected.location.endereco_numero}` : '—'}</div>
-            <div><strong>Data/Hora:</strong> {new Date(selected.data_hora).toLocaleString('pt-BR')}</div>
-            <div><strong>Duração:</strong> {selected.duracao_minutos} min</div>
-            <div><strong>Status:</strong> <span className={`badge ${statusBadge[selected.status] || 'badge-gray'}`}>{statusLabel[selected.status] || selected.status}</span></div>
-            <div><strong>Valor Serviço:</strong> {selected.valor_servico != null ? money(Number(selected.valor_servico)) : '—'}</div>
-            <div><strong>Desconto:</strong> {selected.desconto != null ? money(Number(selected.desconto)) : '—'}</div>
-            <div><strong>Valor Final:</strong> {selected.valor_servico != null ? money(valorFinal(selected)) : '—'}</div>
-            <div><strong>Pagamento:</strong> {selected.forma_pagamento ? (pagamentoLabel[selected.forma_pagamento] || selected.forma_pagamento) : '—'}</div>
-            {selected.vehicle && (
-              <div style={{ gridColumn: '1 / -1' }}>
-                <strong>Veículo:</strong> 🚗 {selected.vehicle.marca} {selected.vehicle.modelo} · {selected.vehicle.placa}{selected.vehicle.cor ? ` · ${selected.vehicle.cor}` : ''}
-                {selected.quilometragem != null && ` · ${selected.quilometragem.toLocaleString('pt-BR')} km`}
-              </div>
-            )}
-          </div>
-          {selected.notas && <div style={{ marginTop: '0.5rem', fontSize: '0.88rem' }}><strong>Notas:</strong> {selected.notas}</div>}
-        </div>
-      )}
+      {/* Detail Drawer */}
+      <DetailDrawer open={!!selected} onClose={() => setSelectedId(null)} title="Detalhes do Agendamento">
+        {selected && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.88rem' }}>
+              <div><strong>Cliente:</strong> {selected.client?.nome || selected.nome_visitante || '—'}</div>
+              <div><strong>Serviço(s):</strong> {getServiceNames(selected)}</div>
+              <div><strong>Local:</strong> {selected.location ? `${selected.location.endereco_rua}, ${selected.location.endereco_numero}` : '—'}</div>
+              <div><strong>Data/Hora:</strong> {new Date(selected.data_hora).toLocaleString('pt-BR')}</div>
+              <div><strong>Duração:</strong> {selected.duracao_minutos} min</div>
+              <div><strong>Status:</strong> <StatusBadge status={selected.status as AppointmentStatus} /></div>
+              <div><strong>Valor Serviço:</strong> {selected.valor_servico != null ? money(Number(selected.valor_servico)) : '—'}</div>
+              <div><strong>Desconto:</strong> {selected.desconto != null ? money(Number(selected.desconto)) : '—'}</div>
+              <div><strong>Valor Final:</strong> {selected.valor_servico != null ? money(valorFinal(selected)) : '—'}</div>
+              <div><strong>Pagamento:</strong> {selected.forma_pagamento ? (pagamentoLabel[selected.forma_pagamento] || selected.forma_pagamento) : '—'}</div>
+              {selected.vehicle && (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <strong>Veículo:</strong> 🚗 {selected.vehicle.marca} {selected.vehicle.modelo} · {selected.vehicle.placa}{selected.vehicle.cor ? ` · ${selected.vehicle.cor}` : ''}
+                  {selected.quilometragem != null && ` · ${selected.quilometragem.toLocaleString('pt-BR')} km`}
+                </div>
+              )}
+            </div>
+            {selected.notas && <div style={{ marginTop: '0.75rem', fontSize: '0.88rem' }}><strong>Notas:</strong> {selected.notas}</div>}
+            <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button className="btn btn-sm" onClick={() => openEditForm(selected)}>Editar</button>
+              {statusFlow[selected.status]?.map(next => (
+                <button
+                  key={next}
+                  className={`btn btn-sm ${next === 'CANCELADO' ? 'btn-danger' : 'btn-success'}`}
+                  onClick={() => next === 'CANCELADO' ? handleCancel(selected.id) : handleStatusChange(selected.id, next)}
+                >
+                  {statusButtonLabel[next] || next}
+                </button>
+              ))}
+              <button className="btn btn-sm btn-danger" onClick={() => handleDelete(selected.id)}>Excluir</button>
+            </div>
+          </>
+        )}
+      </DetailDrawer>
 
       {loading ? (
         <div className="loading">Carregando...</div>
@@ -506,14 +521,14 @@ export default function AppointmentsPage() {
         <p className="empty">{search || statusFilter !== 'TODOS' ? 'Nenhum agendamento encontrado.' : 'Nenhum agendamento no período.'}</p>
       ) : (
         <div className="item-cards">
-          {filtered.slice(0, visibleCount).map(a => (
+          {filtered.map(a => (
             <div className="item-card" key={a.id} onClick={() => setSelectedId(a.id === selectedId ? null : a.id)} style={{ cursor: 'pointer' }}>
               <div className="item-card-header">
                 <div>
                   <div className="item-card-title">{new Date(a.data_hora).toLocaleString('pt-BR')}</div>
                   <div className="item-card-subtitle">{a.duracao_minutos} min</div>
                 </div>
-                <span className={`badge ${statusBadge[a.status] || 'badge-gray'}`}>{statusLabel[a.status] || a.status}</span>
+                <StatusBadge status={a.status as AppointmentStatus} />
               </div>
               <div className="item-card-body">
                 <div><strong>{getServiceNames(a)}</strong></div>
@@ -558,11 +573,7 @@ export default function AppointmentsPage() {
         </div>
       )}
 
-      {!loading && visibleCount < filtered.length && (
-        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-          <button className="btn" onClick={() => setVisibleCount(v => v + 9)}>Ver mais</button>
-        </div>
-      )}
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

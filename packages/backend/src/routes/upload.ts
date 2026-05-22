@@ -44,8 +44,9 @@ router.post('/', upload.single('file'), async (req: Request, res: Response) => {
       return;
     }
 
+    const namespace = req.context?.tenant_id ?? req.context?.user_id;
     const ext = req.file.mimetype === 'image/png' ? '.png' : '.jpg';
-    const filename = `${randomUUID()}${ext}`;
+    const filename = `${namespace}/${randomUUID()}${ext}`;
     const provider = getStorageProvider();
     const url = await provider.upload(req.file.buffer, filename);
 

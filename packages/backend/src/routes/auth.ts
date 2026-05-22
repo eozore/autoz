@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
-import { signJwt, verifyJwt } from '../lib/jwt';
+import { signJwt } from '../lib/jwt';
+import { generateRefreshToken, hashRefreshToken } from '../lib/refreshToken';
 import { registerSchema, loginSchema, refreshSchema } from '../schemas/auth';
 import { ZodError } from 'zod';
 
@@ -39,15 +40,29 @@ router.post('/register', async (req: Request, res: Response) => {
       },
     });
 
-    // Generate JWT
+    // Generate access token (JWT, 1h expiry)
     const token = signJwt({
       user_id: user.id,
       tenant_id: null,
       role: user.role,
     });
 
+    // Generate refresh token (opaque, 7-day expiry)
+    const rawRefreshToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(rawRefreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await prisma.refreshToken.create({
+      data: {
+        user_id: user.id,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+      },
+    });
+
     res.status(201).json({
       token,
+      refresh_token: rawRefreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -95,8 +110,22 @@ router.post('/login', async (req: Request, res: Response) => {
       role: user.role,
     });
 
+    // Generate refresh token (opaque, 7-day expiry)
+    const rawRefreshToken = generateRefreshToken();
+    const tokenHash = hashRefreshToken(rawRefreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await prisma.refreshToken.create({
+      data: {
+        user_id: user.id,
+        token_hash: tokenHash,
+        expires_at: expiresAt,
+      },
+    });
+
     res.status(200).json({
       token,
+      refresh_token: rawRefreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -122,18 +151,28 @@ router.post('/refresh', async (req: Request, res: Response) => {
   try {
     const data = refreshSchema.parse(req.body);
 
-    // Verify the existing token
-    let payload;
-    try {
-      payload = verifyJwt(data.token);
-    } catch {
+    // Hash the incoming refresh token
+    const tokenHash = hashRefreshToken(data.refresh_token);
+
+    // Look up the hash in the RefreshToken table
+    const storedToken = await prisma.refreshToken.findUnique({
+      where: { token_hash: tokenHash },
+    });
+
+    // Verify token exists and is not expired
+    if (!storedToken || storedToken.expires_at < new Date()) {
       res.status(401).json({ error: 'Token inválido ou expirado' });
       return;
     }
 
-    // Look up the user in the database to get current data
+    // Delete the old token row (rotation)
+    await prisma.refreshToken.delete({
+      where: { id: storedToken.id },
+    });
+
+    // Look up the user to get current data for the new access token
     const user = await prisma.user.findUnique({
-      where: { id: payload.user_id },
+      where: { id: storedToken.user_id },
     });
 
     if (!user) {
@@ -141,14 +180,27 @@ router.post('/refresh', async (req: Request, res: Response) => {
       return;
     }
 
-    // Issue a new JWT with updated claims from the database
+    // Generate a new access token
     const token = signJwt({
       user_id: user.id,
       tenant_id: user.tenant_id,
       role: user.role,
     });
 
-    res.status(200).json({ token });
+    // Generate a new refresh token and store its hash
+    const newRawRefreshToken = generateRefreshToken();
+    const newTokenHash = hashRefreshToken(newRawRefreshToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    await prisma.refreshToken.create({
+      data: {
+        user_id: user.id,
+        token_hash: newTokenHash,
+        expires_at: expiresAt,
+      },
+    });
+
+    res.status(200).json({ token, refresh_token: newRawRefreshToken });
   } catch (err) {
     if (err instanceof ZodError) {
       res.status(400).json({ error: 'Dados inválidos', details: err.errors });

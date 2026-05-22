@@ -18,7 +18,7 @@ export interface JwtPayload {
 }
 
 export function signJwt(payload: JwtPayload): string {
-  return jwt.sign(payload, getSecret(), { expiresIn: '24h' });
+  return jwt.sign(payload, getSecret(), { expiresIn: '1h' });
 }
 
 export function verifyJwt(token: string): JwtPayload {

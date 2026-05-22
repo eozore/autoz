@@ -1,5 +1,9 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import api, { ApiError } from '../lib/api';
+import { EmptyState } from '../design-system/components/EmptyState';
+import { Modal } from '../design-system/components/Modal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 interface Client {
   id: string;
@@ -42,6 +46,7 @@ export default function ClientsPage() {
   const [vEditId, setVEditId] = useState<string | null>(null);
   const [showVForm, setShowVForm] = useState(false);
   const [vSaving, setVSaving] = useState(false);
+  const { dialogProps, confirm } = useConfirmDialog();
 
   const filtered = useMemo(() => {
     if (!search.trim()) return clients;
@@ -130,13 +135,19 @@ export default function ClientsPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Excluir este cliente?')) return;
-    try {
-      await api.delete(`/clients/${id}`);
-      setClients(prev => prev.filter(c => c.id !== id));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
-    }
+    confirm({
+      title: 'Confirmar Exclusão',
+      description: 'Tem certeza que deseja excluir este cliente?',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/clients/${id}`);
+          setClients(prev => prev.filter(c => c.id !== id));
+        } catch (err) {
+          setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
+        }
+      },
+    });
   }
 
   // Vehicle handlers
@@ -171,13 +182,19 @@ export default function ClientsPage() {
   }
 
   async function handleVDelete(vId: string) {
-    if (!confirm('Excluir este veículo?')) return;
-    try {
-      await api.delete(`/vehicles/${vId}`);
-      await loadVehicles(expandedClient!);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao excluir veículo');
-    }
+    confirm({
+      title: 'Confirmar Exclusão',
+      description: 'Tem certeza que deseja excluir este veículo?',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/vehicles/${vId}`);
+          await loadVehicles(expandedClient!);
+        } catch (err) {
+          setError(err instanceof ApiError ? err.message : 'Erro ao excluir veículo');
+        }
+      },
+    });
   }
 
   function upd(field: string, value: string) { setForm(prev => ({ ...prev, [field]: value })); }
@@ -244,27 +261,36 @@ export default function ClientsPage() {
       </div>
 
       {showForm && (
-        <div className="form-panel">
-          <h2>{editId ? 'Editar Cliente' : 'Novo Cliente'}</h2>
-          <form onSubmit={handleSubmit}>
-            <label>Nome *<input value={form.nome} onChange={e => upd('nome', e.target.value)} required /></label>
-            <div className="form-row">
-              <label className="flex-grow">Email<input type="email" value={form.email} onChange={e => upd('email', e.target.value)} /></label>
-              <label className="flex-grow">Celular *<input value={form.celular} onChange={e => upd('celular', e.target.value)} required placeholder="+5511999999999" /></label>
-            </div>
-            <label>Data de Nascimento<input type="date" value={form.data_nascimento} onChange={e => upd('data_nascimento', e.target.value)} /></label>
-            <div className="form-row">
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
-              <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
-            </div>
-          </form>
-          {/* Show vehicles section below client edit form */}
-          {editId && expandedClient === editId && renderVehiclesSection(editId, form.nome)}
-        </div>
+        <Modal open={showForm} onClose={() => setShowForm(false)} title={editId ? 'Editar Cliente' : 'Novo Cliente'}>
+              <form onSubmit={handleSubmit}>
+                <label>Nome *<input value={form.nome} onChange={e => upd('nome', e.target.value)} required /></label>
+                <div className="form-row">
+                  <label className="flex-grow">Email<input type="email" value={form.email} onChange={e => upd('email', e.target.value)} /></label>
+                  <label className="flex-grow">Celular *<input value={form.celular} onChange={e => upd('celular', e.target.value)} required placeholder="+5511999999999" /></label>
+                </div>
+                <label>Data de Nascimento<input type="date" value={form.data_nascimento} onChange={e => upd('data_nascimento', e.target.value)} /></label>
+                <div className="form-row">
+                  <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
+                  <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
+                </div>
+              </form>
+              {/* Show vehicles section below client edit form */}
+              {editId && expandedClient === editId && renderVehiclesSection(editId, form.nome)}
+        </Modal>
       )}
 
       {filtered.length === 0 ? (
-        <p className="empty">{search ? 'Nenhum cliente encontrado.' : 'Nenhum cliente cadastrado.'}</p>
+        search ? (
+          <p className="empty">Nenhum cliente encontrado.</p>
+        ) : (
+          <EmptyState
+            icon={<span>👥</span>}
+            title="Nenhum Cliente Cadastrado"
+            description="Cadastre seu primeiro cliente para começar a gerenciar agendamentos e veículos de forma organizada."
+            actionLabel="Cadastrar Primeiro Cliente"
+            onAction={startCreate}
+          />
+        )
       ) : (
         <div className="item-cards">
           {filtered.map(c => (
@@ -305,6 +331,8 @@ export default function ClientsPage() {
           <button className="btn" onClick={() => loadClients(nextCursor)}>Ver mais</button>
         </div>
       )}
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

@@ -22,10 +22,11 @@ export class LocalStorageProvider implements StorageProvider {
   }
 
   async upload(file: Buffer, filename: string): Promise<string> {
-    if (!fs.existsSync(this.uploadDir)) {
-      fs.mkdirSync(this.uploadDir, { recursive: true });
-    }
     const filePath = path.join(this.uploadDir, filename);
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(filePath, file);
     return `/uploads/${filename}`;
   }

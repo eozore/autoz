@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { createAppointmentSchema, updateAppointmentSchema } from '../schemas/appointment';
 import { ZodError } from 'zod';
-import { AppointmentStatus } from '../generated/prisma/enums';
+import { AppointmentStatus, FormaPagamento } from '../generated/prisma/enums';
 import { getDefaultDateRange } from '../lib/dateFilter';
 
 const router = Router();
@@ -146,7 +146,7 @@ router.post('/', async (req: Request, res: Response) => {
           celular_visitante: data.celular_visitante ?? null,
           notas: data.notas ?? null,
           desconto: data.desconto ?? null,
-          forma_pagamento: data.forma_pagamento ?? null,
+          forma_pagamento: (data.forma_pagamento as FormaPagamento) ?? null,
           valor_servico: data.valor_servico ?? null,
         },
       });
@@ -326,7 +326,7 @@ router.put(
             }),
             ...(data.notas !== undefined && { notas: data.notas }),
             ...(data.desconto !== undefined && { desconto: data.desconto }),
-            ...(data.forma_pagamento !== undefined && { forma_pagamento: data.forma_pagamento }),
+            ...(data.forma_pagamento !== undefined && { forma_pagamento: data.forma_pagamento as FormaPagamento }),
             ...(data.valor_servico !== undefined && { valor_servico: data.valor_servico }),
             ...(data.vehicle_id !== undefined && { vehicle_id: data.vehicle_id }),
             ...(data.quilometragem !== undefined && { quilometragem: data.quilometragem }),
@@ -505,5 +505,30 @@ router.delete(
     }
   },
 );
+
+/**
+ * PATCH /appointments/:id/restore — Restore a soft-deleted appointment.
+ */
+router.patch('/:id/restore', async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const tenantId = req.context!.tenant_id!;
+    const record = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT id FROM appointments WHERE id = $1 AND tenant_id = $2`,
+      req.params.id, tenantId
+    );
+    if (!record || record.length === 0) {
+      res.status(404).json({ error: 'Registro não encontrado' });
+      return;
+    }
+    await prisma.$executeRawUnsafe(
+      `UPDATE appointments SET deleted_at = NULL WHERE id = $1`,
+      req.params.id
+    );
+    res.json({ message: 'Registro restaurado' });
+  } catch (err) {
+    logger.error('Restore appointment error', { error: String(err) });
+    res.status(500).json({ error: 'Erro ao restaurar registro' });
+  }
+});
 
 export default router;

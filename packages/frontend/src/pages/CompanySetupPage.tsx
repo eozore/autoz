@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api, { ApiError, uploadFile } from '../lib/api';
 
@@ -11,6 +11,7 @@ interface CompanyResponse {
 
 export default function CompanySetupPage() {
   const { user, isAuthenticated, setTokenAndUser } = useAuth();
+  const navigate = useNavigate();
   const [form, setForm] = useState({
     nome: '',
     descricao: '',
@@ -72,7 +73,8 @@ export default function CompanySetupPage() {
         tenant_id: payload.tenant_id,
       });
 
-      // Navigate happens via the redirect at top of component on re-render
+      // Redirect to Dashboard with onboarding checklist expanded
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.details) {

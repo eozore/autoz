@@ -6,7 +6,7 @@ import { prisma } from '../test/setup';
 
 const VALID_REGISTER = {
   email: 'owner@test.com',
-  senha: 'password123',
+  senha: 'Password123!',
   nome: 'João Silva',
   idade: 25,
   celular: '+5511999999999',

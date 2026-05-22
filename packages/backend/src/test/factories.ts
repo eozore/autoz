@@ -247,7 +247,7 @@ export async function createBill(
       tenant_id: overrides.tenantId,
       descricao: overrides.descricao ?? 'Test Bill',
       valor: overrides.valor ?? 100.0,
-      data_vencimento: overrides.dataVencimento ?? new Date('2025-12-31'),
+      data_vencimento: overrides.dataVencimento ?? new Date(),
       status: overrides.status ?? BillStatus.PENDENTE,
     },
   });
@@ -277,7 +277,7 @@ export async function createAppointment(
       location_id: overrides.locationId,
       client_id: overrides.clientId ?? null,
       vehicle_id: overrides.vehicleId ?? null,
-      data_hora: overrides.dataHora ?? new Date('2025-06-15T10:00:00Z'),
+      data_hora: overrides.dataHora ?? new Date(),
       duracao_minutos: overrides.duracaoMinutos ?? 60,
       quilometragem: overrides.quilometragem ?? null,
       status: overrides.status ?? AppointmentStatus.AGENDADO,

@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { AppointmentStatus } from '../generated/prisma/enums';
 import { z } from 'zod';
+import { ReviewService, reviewSchema } from '../services/review.service';
+import { ColdStartService } from '../services/cold-start.service';
 
 const router = Router();
 
@@ -61,6 +63,7 @@ router.get('/:slug/services', async (req: Request<{ slug: string }>, res: Respon
         foto_url: true,
         duracao_minutos: true,
         valor: true,
+        categoria: true,
       },
       orderBy: { created_at: 'asc' },
     });
@@ -134,6 +137,58 @@ router.get('/:slug/locations', async (req: Request<{ slug: string }>, res: Respo
     res.status(200).json(locations);
   } catch (err) {
     logger.error('Public locations error', { error: String(err) });
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * POST /public/:slug/reviews — Submit a review for a tenant's appointment.
+ */
+router.post('/:slug/reviews', async (req: Request<{ slug: string }>, res: Response) => {
+  try {
+    const tenant = await resolveTenant(req.params.slug);
+    if (!tenant) {
+      res.status(404).json({ error: 'Estabelecimento não encontrado' });
+      return;
+    }
+
+    // Validate request body with Zod
+    const validation = reviewSchema.safeParse(req.body);
+    if (!validation.success) {
+      res.status(400).json({ error: 'Dados inválidos', details: validation.error.errors });
+      return;
+    }
+
+    const result = await ReviewService.createReview(tenant.id, validation.data);
+
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+
+    res.status(201).json(result.review);
+  } catch (err) {
+    logger.error('Public review creation error', { error: String(err) });
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * GET /public/:slug/reviews — Get public reviews for a tenant.
+ * Returns reviews + aggregate rating + placeholder flag.
+ */
+router.get('/:slug/reviews', async (req: Request<{ slug: string }>, res: Response) => {
+  try {
+    const tenant = await resolveTenant(req.params.slug);
+    if (!tenant) {
+      res.status(404).json({ error: 'Estabelecimento não encontrado' });
+      return;
+    }
+
+    const reviewsResponse = await ReviewService.getPublicReviews(tenant.id);
+    res.status(200).json(reviewsResponse);
+  } catch (err) {
+    logger.error('Public reviews fetch error', { error: String(err) });
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -349,6 +404,68 @@ router.post('/:slug/appointments', async (req: Request<{ slug: string }>, res: R
       return;
     }
     logger.error('Public appointment error', { error: String(err) });
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * GET /public/:slug/liquidity — Liquidity signals with cold start flag.
+ */
+router.get('/:slug/liquidity', async (req: Request<{ slug: string }>, res: Response) => {
+  try {
+    const tenant = await resolveTenant(req.params.slug);
+    if (!tenant) {
+      res.status(404).json({ error: 'Estabelecimento não encontrado' });
+      return;
+    }
+
+    const liquidity = await ColdStartService.getLiquiditySignals(tenant.id);
+    res.status(200).json(liquidity);
+  } catch (err) {
+    logger.error('Public liquidity error', { error: String(err) });
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * GET /public/:slug/faqs — Public FAQs with fallback content.
+ */
+router.get('/:slug/faqs', async (req: Request<{ slug: string }>, res: Response) => {
+  try {
+    const tenant = await resolveTenant(req.params.slug);
+    if (!tenant) {
+      res.status(404).json({ error: 'Estabelecimento não encontrado' });
+      return;
+    }
+
+    const faqs = await ColdStartService.getPublicFAQs(tenant.id);
+    res.status(200).json(faqs);
+  } catch (err) {
+    logger.error('Public FAQs error', { error: String(err) });
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * GET /public/:slug/settings — Public tenant settings (garantia_enabled).
+ */
+router.get('/:slug/settings', async (req: Request<{ slug: string }>, res: Response) => {
+  try {
+    const tenant = await resolveTenant(req.params.slug);
+    if (!tenant) {
+      res.status(404).json({ error: 'Estabelecimento não encontrado' });
+      return;
+    }
+
+    const settings = await prisma.tenantSettings.findUnique({
+      where: { tenant_id: tenant.id },
+    });
+
+    res.status(200).json({
+      garantia_enabled: settings?.garantia_enabled ?? false,
+    });
+  } catch (err) {
+    logger.error('Public settings error', { error: String(err) });
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });

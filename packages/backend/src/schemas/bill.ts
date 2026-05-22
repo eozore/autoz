@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const createBillSchema = z.object({
-  descricao: z.string().min(1, 'Descrição é obrigatória'),
+  descricao: z.string().min(1, 'Descrição é obrigatória').max(2000, 'descricao: máximo 2000 caracteres'),
   valor: z.number().min(0, 'Valor deve ser >= 0'),
   data_vencimento: z.string().date('Data de vencimento inválida'),
 });
@@ -9,7 +9,7 @@ export const createBillSchema = z.object({
 export type CreateBillInput = z.infer<typeof createBillSchema>;
 
 export const updateBillSchema = z.object({
-  descricao: z.string().min(1).optional(),
+  descricao: z.string().min(1).max(2000, 'descricao: máximo 2000 caracteres').optional(),
   valor: z.number().min(0).optional(),
   data_vencimento: z.string().date().optional(),
 });

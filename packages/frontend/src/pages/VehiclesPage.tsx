@@ -1,5 +1,10 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import api, { ApiError } from '../lib/api';
+import SearchableSelect from '../components/SearchableSelect';
+import { DetailDrawer } from '../components/DetailDrawer';
+import { Modal } from '../design-system/components/Modal';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 interface Client { id: string; nome: string; }
 
@@ -49,6 +54,7 @@ export default function VehiclesPage() {
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferClientId, setTransferClientId] = useState('');
   const [transferring, setTransferring] = useState(false);
+  const { dialogProps, confirm } = useConfirmDialog();
 
   async function loadVehicles(cursor?: string, searchTerm?: string) {
     try {
@@ -148,14 +154,20 @@ export default function VehiclesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Excluir este veículo?')) return;
-    try {
-      await api.delete(`/vehicles/${id}`);
-      setVehicles(prev => prev.filter(v => v.id !== id));
-      if (selectedId === id) { setSelectedId(null); setSelectedVehicle(null); }
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
-    }
+    confirm({
+      title: 'Confirmar Exclusão',
+      description: 'Tem certeza que deseja excluir este veículo?',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.delete(`/vehicles/${id}`);
+          setVehicles(prev => prev.filter(v => v.id !== id));
+          if (selectedId === id) { setSelectedId(null); setSelectedVehicle(null); }
+        } catch (err) {
+          setError(err instanceof ApiError ? err.message : 'Erro ao excluir');
+        }
+      },
+    });
   }
 
   async function handleSelectVehicle(id: string) {
@@ -212,96 +224,96 @@ export default function VehiclesPage() {
       </div>
 
       {showForm && (
-        <div className="form-panel">
-          <h2>{editId ? 'Editar Veículo' : 'Novo Veículo'}</h2>
-          <form onSubmit={handleSubmit}>
-            {!editId && (
-              <label>Cliente *
-                <select value={form.client_id} onChange={e => upd('client_id', e.target.value)} required>
-                  <option value="">Selecione o cliente...</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                </select>
-              </label>
-            )}
-            <div className="form-row">
-              <label className="flex-grow">Marca *<input value={form.marca} onChange={e => upd('marca', e.target.value)} required /></label>
-              <label className="flex-grow">Modelo *<input value={form.modelo} onChange={e => upd('modelo', e.target.value)} required /></label>
-            </div>
-            <div className="form-row">
-              <label className="flex-grow">Ano *<input type="number" value={form.ano} onChange={e => upd('ano', e.target.value)} required min={1900} max={new Date().getFullYear() + 1} /></label>
-              <label className="flex-grow">Placa *<input value={form.placa} onChange={e => upd('placa', e.target.value.toUpperCase())} required /></label>
-            </div>
-            <div className="form-row">
-              <label className="flex-grow">Cor<input value={form.cor} onChange={e => upd('cor', e.target.value)} placeholder="Ex: Preto, Branco..." /></label>
-              <label className="flex-grow">Quilometragem (km)<input type="number" min={0} value={form.quilometragem} onChange={e => upd('quilometragem', e.target.value)} placeholder="Ex: 45000" /></label>
-            </div>
-            <div className="form-row">
-              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
-              <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Detail panel */}
-      {selectedId && (
-        <div className="form-panel" style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <h2>Detalhes do Veículo</h2>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn btn-sm btn-primary" onClick={() => { setShowTransfer(true); loadClients(); }}>Transferir</button>
-              <button className="btn btn-sm" onClick={() => { setSelectedId(null); setSelectedVehicle(null); setShowTransfer(false); }}>✕ Fechar</button>
-            </div>
-          </div>
-          {loadingDetail ? (
-            <div className="loading" style={{ padding: '1rem' }}>Carregando...</div>
-          ) : selectedVehicle ? (
-            <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.75rem', fontSize: '0.88rem' }}>
-                <div><strong>Proprietário:</strong> {selectedVehicle.client?.nome || '—'}</div>
-                <div><strong>Placa:</strong> {selectedVehicle.placa}</div>
-                <div><strong>Marca/Modelo:</strong> {selectedVehicle.marca} {selectedVehicle.modelo}</div>
-                <div><strong>Ano:</strong> {selectedVehicle.ano}</div>
-                {selectedVehicle.cor && <div><strong>Cor:</strong> {selectedVehicle.cor}</div>}
-                {selectedVehicle.quilometragem != null && <div><strong>Quilometragem:</strong> {selectedVehicle.quilometragem.toLocaleString('pt-BR')} km</div>}
-              </div>
-
-              {showTransfer && (
-                <form onSubmit={handleTransfer} style={{ marginTop: '1rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                  <strong style={{ fontSize: '0.88rem' }}>Transferir para outro cliente</strong>
-                  <div className="form-row" style={{ marginTop: '0.5rem' }}>
-                    <select value={transferClientId} onChange={e => setTransferClientId(e.target.value)} required style={{ flex: 1 }}>
-                      <option value="">Selecione o novo proprietário...</option>
-                      {clients.filter(c => c.id !== selectedVehicle.client_id).map(c => (
-                        <option key={c.id} value={c.id}>{c.nome}</option>
-                      ))}
-                    </select>
-                    <button type="submit" className="btn btn-sm btn-primary" disabled={transferring}>{transferring ? 'Transferindo...' : 'Confirmar'}</button>
-                    <button type="button" className="btn btn-sm" onClick={() => setShowTransfer(false)}>Cancelar</button>
-                  </div>
-                </form>
-              )}
-
-              {selectedVehicle.ownershipHistory && selectedVehicle.ownershipHistory.length > 0 && (
-                <div style={{ marginTop: '1rem' }}>
-                  <strong style={{ fontSize: '0.88rem' }}>Histórico de Proprietários</strong>
-                  <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                    {selectedVehicle.ownershipHistory.map(h => (
-                      <div key={h.id} style={{ fontSize: '0.82rem', padding: '0.4rem 0.6rem', background: '#f3f4f6', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>👤 {h.client.nome}</span>
-                        <span style={{ color: '#6b7280' }}>
-                          {new Date(h.started_at).toLocaleDateString('pt-BR')}
-                          {h.ended_at ? ` → ${new Date(h.ended_at).toLocaleDateString('pt-BR')}` : ' → atual'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+        <Modal open={showForm} onClose={() => setShowForm(false)} title={editId ? 'Editar Veículo' : 'Novo Veículo'}>
+              <form onSubmit={handleSubmit}>
+                {!editId && (
+                  <label>Cliente *
+                    <SearchableSelect
+                      options={clients.map(c => ({ value: c.id, label: c.nome }))}
+                      value={form.client_id}
+                      onChange={val => upd('client_id', val)}
+                      placeholder="Selecione o cliente..."
+                      required
+                    />
+                  </label>
+                )}
+                <div className="form-row">
+                  <label className="flex-grow">Marca *<input value={form.marca} onChange={e => upd('marca', e.target.value)} required /></label>
+                  <label className="flex-grow">Modelo *<input value={form.modelo} onChange={e => upd('modelo', e.target.value)} required /></label>
                 </div>
-              )}
-            </>
-          ) : null}
-        </div>
+                <div className="form-row">
+                  <label className="flex-grow">Ano *<input type="number" value={form.ano} onChange={e => upd('ano', e.target.value)} required min={1900} max={new Date().getFullYear() + 1} /></label>
+                  <label className="flex-grow">Placa *<input value={form.placa} onChange={e => upd('placa', e.target.value.toUpperCase())} required /></label>
+                </div>
+                <div className="form-row">
+                  <label className="flex-grow">Cor<input value={form.cor} onChange={e => upd('cor', e.target.value)} placeholder="Ex: Preto, Branco..." /></label>
+                  <label className="flex-grow">Quilometragem (km)<input type="number" min={0} value={form.quilometragem} onChange={e => upd('quilometragem', e.target.value)} placeholder="Ex: 45000" /></label>
+                </div>
+                <div className="form-row">
+                  <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</button>
+                  <button type="button" className="btn" onClick={() => setShowForm(false)}>Cancelar</button>
+                </div>
+              </form>
+        </Modal>
       )}
+
+      {/* Detail Drawer */}
+      <DetailDrawer open={!!selectedId} onClose={() => { setSelectedId(null); setSelectedVehicle(null); setShowTransfer(false); }} title="Detalhes do Veículo">
+        {loadingDetail ? (
+          <div className="loading" style={{ padding: '1rem' }}>Carregando...</div>
+        ) : selectedVehicle ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.88rem' }}>
+              <div><strong>Proprietário:</strong> {selectedVehicle.client?.nome || '—'}</div>
+              <div><strong>Placa:</strong> {selectedVehicle.placa}</div>
+              <div><strong>Marca/Modelo:</strong> {selectedVehicle.marca} {selectedVehicle.modelo}</div>
+              <div><strong>Ano:</strong> {selectedVehicle.ano}</div>
+              {selectedVehicle.cor && <div><strong>Cor:</strong> {selectedVehicle.cor}</div>}
+              {selectedVehicle.quilometragem != null && <div><strong>Quilometragem:</strong> {selectedVehicle.quilometragem.toLocaleString('pt-BR')} km</div>}
+            </div>
+
+            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-sm btn-primary" onClick={() => { setShowTransfer(true); loadClients(); }}>Transferir</button>
+            </div>
+
+            {showTransfer && (
+              <form onSubmit={handleTransfer} style={{ marginTop: '1rem', padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                <strong style={{ fontSize: '0.88rem' }}>Transferir para outro cliente</strong>
+                <div className="form-row" style={{ marginTop: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <SearchableSelect
+                      options={clients.filter(c => c.id !== selectedVehicle.client_id).map(c => ({ value: c.id, label: c.nome }))}
+                      value={transferClientId}
+                      onChange={val => setTransferClientId(val)}
+                      placeholder="Selecione o novo proprietário..."
+                      required
+                    />
+                  </div>
+                  <button type="submit" className="btn btn-sm btn-primary" disabled={transferring}>{transferring ? 'Transferindo...' : 'Confirmar'}</button>
+                  <button type="button" className="btn btn-sm" onClick={() => setShowTransfer(false)}>Cancelar</button>
+                </div>
+              </form>
+            )}
+
+            {selectedVehicle.ownershipHistory && selectedVehicle.ownershipHistory.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <strong style={{ fontSize: '0.88rem' }}>Histórico de Proprietários</strong>
+                <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  {selectedVehicle.ownershipHistory.map(h => (
+                    <div key={h.id} style={{ fontSize: '0.82rem', padding: '0.4rem 0.6rem', background: '#f3f4f6', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>👤 {h.client.nome}</span>
+                      <span style={{ color: '#6b7280' }}>
+                        {new Date(h.started_at).toLocaleDateString('pt-BR')}
+                        {h.ended_at ? ` → ${new Date(h.ended_at).toLocaleDateString('pt-BR')}` : ' → atual'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : null}
+      </DetailDrawer>
 
       {vehicles.length === 0 && !loading ? (
         <p className="empty">{search ? 'Nenhum veículo encontrado.' : 'Nenhum veículo cadastrado.'}</p>
@@ -339,6 +351,8 @@ export default function VehiclesPage() {
           <button className="btn" onClick={() => loadVehicles(nextCursor, search)}>Ver mais</button>
         </div>
       )}
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

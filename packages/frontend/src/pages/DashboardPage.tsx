@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import api, { ApiError } from '../lib/api';
 import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { OnboardingBanner } from '../components/onboarding/OnboardingBanner';
+import { DashboardAnalytics } from '../components/analytics/DashboardAnalytics';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useConfirmDialog } from '../hooks/useConfirmDialog';
 
 interface Appointment {
   id: string; data_hora: string; duracao_minutos: number; status: string;
@@ -47,6 +51,10 @@ export default function DashboardPage() {
   const [billsChart, setBillsChart] = useState<Array<{ name: string; valor: number }>>([]);
   const [services, setServices] = useState<ServiceInfo[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const { dialogProps, confirm } = useConfirmDialog();
+
+  // Onboarding state
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
 
   // Filters
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -70,7 +78,10 @@ export default function DashboardPage() {
       setLocations(compR.locations || []);
       setServices(svcR);
       setLowStock((invR.data || []).filter(i => i.quantidade_atual <= i.quantidade_minima).slice(0, 5));
-    } catch {}
+    } catch (err) {
+      console.error('Error loading dashboard base data:', err);
+    }
+
     await loadFiltered();
     setLoading(false);
   }
@@ -86,10 +97,10 @@ export default function DashboardPage() {
       const weekEnd = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
 
       const [finR, monthAppts, todayR, weekR, billsR] = await Promise.all([
-        api.get<FinStats>('/dashboard/stats'),
-        api.get<Appointment[]>(`/appointments?start=${ms}&end=${me}`),
-        api.get<Appointment[]>(`/appointments?start=${today}T00:00:00&end=${today}T23:59:59`),
-        api.get<Appointment[]>(`/appointments?start=${today}T00:00:00&end=${weekEnd}T23:59:59`),
+        api.get<FinStats>(`/dashboard/stats${selectedLocation !== 'all' ? `?location_id=${selectedLocation}` : ''}`),
+        api.get<Appointment[]>(`/appointments?start=${ms}&end=${me}${selectedLocation !== 'all' ? `&location_id=${selectedLocation}` : ''}`),
+        api.get<Appointment[]>(`/appointments?start=${today}T00:00:00&end=${today}T23:59:59${selectedLocation !== 'all' ? `&location_id=${selectedLocation}` : ''}`),
+        api.get<Appointment[]>(`/appointments?start=${today}T00:00:00&end=${weekEnd}T23:59:59${selectedLocation !== 'all' ? `&location_id=${selectedLocation}` : ''}`),
         api.get<{ data: Bill[] }>('/bills'),
       ]);
 
@@ -124,13 +135,19 @@ export default function DashboardPage() {
   }
 
   async function cancelAppt(id: string) {
-    if (!confirm('Cancelar este agendamento?')) return;
-    try {
-      await api.patch(`/appointments/${id}/cancel`);
-      await loadFiltered();
-    } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'Erro ao cancelar');
-    }
+    confirm({
+      title: 'Cancelar Agendamento',
+      description: 'Tem certeza que deseja cancelar este agendamento?',
+      variant: 'danger',
+      onConfirm: async () => {
+        try {
+          await api.patch(`/appointments/${id}/cancel`);
+          await loadFiltered();
+        } catch (err) {
+          alert(err instanceof ApiError ? err.message : 'Erro ao cancelar');
+        }
+      },
+    });
   }
 
   if (loading) return <div className="loading">Carregando painel...</div>;
@@ -165,28 +182,36 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Onboarding Banner */}
+      {!onboardingComplete && (
+        <OnboardingBanner
+          defaultExpanded={false}
+          onAllCompleted={() => setOnboardingComplete(true)}
+        />
+      )}
+
       {/* KPIs */}
       <div className="dash-kpi-row">
         <div className="dash-kpi">
           <div className="dash-kpi-label">Faturamento</div>
-          <div className="dash-kpi-value" style={{ color: '#16a34a' }}>{money(faturamento)}</div>
+          <div className="dash-kpi-value" style={{ color: 'var(--color-success)' }}>{money(faturamento)}</div>
           <div className="dash-kpi-sub">{fin?.month.servicesCompleted || 0} serviços concluídos</div>
         </div>
         <div className="dash-kpi">
           <div className="dash-kpi-label">Contas Pagas</div>
           <div className="dash-kpi-value">{money(fin?.month.paidExpenses || 0)}</div>
-          <div className="dash-kpi-sub" style={{ color: '#dc2626' }}>Falta: {money(fin?.month.pendingExpenses || 0)}</div>
+          <div className="dash-kpi-sub" style={{ color: 'var(--color-danger)' }}>Falta: {money(fin?.month.pendingExpenses || 0)}</div>
         </div>
         <div className="dash-kpi">
           <div className="dash-kpi-label">Fluxo de Caixa</div>
-          <div className="dash-kpi-value" style={{ color: cashFlow >= 0 ? '#16a34a' : '#dc2626' }}>
+          <div className="dash-kpi-value" style={{ color: cashFlow >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
             {cashFlow >= 0 ? '+' : ''}{money(cashFlow)}
           </div>
           <div className="dash-kpi-sub">receita - despesas</div>
         </div>
         <div className="dash-kpi">
           <div className="dash-kpi-label">Hoje</div>
-          <div className="dash-kpi-value" style={{ color: '#ff914d' }}>{todayAppts.length}</div>
+          <div className="dash-kpi-value" style={{ color: 'var(--primary)' }}>{todayAppts.length}</div>
           <div className="dash-kpi-sub">agendamentos</div>
         </div>
       </div>
@@ -198,13 +223,13 @@ export default function DashboardPage() {
           {fin.receivables.inProgress.count > 0 && (
             <div className="dash-receivables-row">
               <span>🔧 Em Andamento: {fin.receivables.inProgress.count} serviços</span>
-              <strong style={{ color: '#f59e0b' }}>{money(fin.receivables.inProgress.total)}</strong>
+              <strong style={{ color: 'var(--color-warning)' }}>{money(fin.receivables.inProgress.total)}</strong>
             </div>
           )}
           {fin.receivables.installments.count > 0 && (
             <div className="dash-receivables-row">
               <span>💳 Parcelado: {fin.receivables.installments.count} serviços</span>
-              <strong style={{ color: '#ff914d' }}>{money(fin.receivables.installments.total)}</strong>
+              <strong style={{ color: 'var(--primary)' }}>{money(fin.receivables.installments.total)}</strong>
             </div>
           )}
         </div>
@@ -219,10 +244,10 @@ export default function DashboardPage() {
           <div style={{ height: 200, minWidth: 0 }}>
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={dailyData}>
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} interval={1} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} allowDecimals={false} width={25} />
-                <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }} />
-                <Area type="monotone" dataKey="servicos" stroke="#ff914d" fill="rgba(255,145,77,0.1)" name="Serviços" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} interval={1} />
+                <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} allowDecimals={false} width={25} />
+                <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid var(--border-base)', fontSize: 12, fontFamily: 'var(--font-family)' }} />
+                <Area type="monotone" dataKey="servicos" stroke="var(--primary)" fill="var(--primary-glow)" name="Serviços" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -235,12 +260,12 @@ export default function DashboardPage() {
           <div style={{ height: 200, minWidth: 0 }}>
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={billsChart} layout="vertical" barSize={20}>
-                <XAxis type="number" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: '#374151' }} axisLine={false} tickLine={false} width={65} />
-                <Tooltip formatter={(v) => money(Number(v))} contentStyle={{ borderRadius: 8, fontSize: 12 }} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} width={65} />
+                <Tooltip formatter={(v) => money(Number(v))} contentStyle={{ borderRadius: 10, border: '1px solid var(--border-base)', fontSize: 12, fontFamily: 'var(--font-family)' }} />
                 <Bar dataKey="valor" radius={[0, 6, 6, 0]} name="Valor">
                   {billsChart.map((entry, i) => {
-                    const colors = ['#16a34a', '#f59e0b', '#dc2626'];
+                    const colors = ['var(--color-success)', 'var(--color-warning)', 'var(--color-danger)'];
                     return <rect key={i} fill={colors[i]} />;
                   })}
                 </Bar>
@@ -337,6 +362,13 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Analytics Section */}
+      <div style={{ marginTop: '2rem' }}>
+        <DashboardAnalytics />
+      </div>
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 }

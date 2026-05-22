@@ -1,0 +1,148 @@
+/* ===== Mobile-First Base Styles =====
+ * Ensures minimum readability and responsive behavior across all viewports.
+ * Import after tokens.css in the app entry point.
+ */
+
+/* Base reset and mobile-first defaults */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--ds-font-family);
+  font-size: var(--ds-font-size-base);
+  line-height: var(--ds-line-height-normal);
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  color: var(--ds-color-text-primary);
+  background-color: var(--ds-color-bg-app);
+}
+
+/* Ensure minimum 14px font size on mobile viewports (Requirement 11.3) */
+@media (max-width: 767px) {
+  html {
+    font-size: max(14px, var(--ds-font-size-base));
+  }
+
+  /* Prevent any text from going below 14px on mobile */
+  body {
+    font-size: max(14px, 1rem);
+  }
+
+  p,
+  li,
+  td,
+  th,
+  label,
+  input,
+  select,
+  textarea,
+  button,
+  a {
+    font-size: max(14px, inherit);
+  }
+
+  /* Small text utility classes still respect minimum */
+  .text-xs,
+  .text-sm {
+    font-size: 14px !important;
+  }
+}
+
+/* Responsive container utility */
+.ds-container {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--ds-space-4);
+  padding-right: var(--ds-space-4);
+}
+
+@media (min-width: 768px) {
+  .ds-container {
+    max-width: 768px;
+    padding-left: var(--ds-space-6);
+    padding-right: var(--ds-space-6);
+  }
+}
+
+@media (min-width: 1025px) {
+  .ds-container {
+    max-width: 1024px;
+  }
+}
+
+/* Touch feedback for interactive elements on mobile (Requirement 11.4) */
+@media (max-width: 767px) {
+  .ds-touch-feedback {
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.1s ease, opacity 0.1s ease;
+  }
+
+  .ds-touch-feedback:active {
+    transform: scale(0.97);
+    opacity: 0.85;
+  }
+}
+
+/* Stack layout utilities */
+.ds-stack-vertical {
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-stack-horizontal {
+  display: flex;
+  flex-direction: row;
+}
+
+/* On mobile, horizontal stacks collapse to vertical */
+@media (max-width: 767px) {
+  .ds-stack-responsive {
+    flex-direction: column;
+  }
+}
+
+/* Grid utilities */
+.ds-grid {
+  display: grid;
+  gap: var(--ds-space-4);
+}
+
+@media (max-width: 767px) {
+  .ds-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1024px) {
+  .ds-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1025px) {
+  .ds-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Hide on specific breakpoints */
+@media (max-width: 767px) {
+  .ds-hide-mobile {
+    display: none !important;
+  }
+}
+
+@media (min-width: 768px) {
+  .ds-hide-desktop {
+    display: none !important;
+  }
+}

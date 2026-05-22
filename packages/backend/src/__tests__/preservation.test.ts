@@ -25,8 +25,8 @@ describe('Preservation Properties', () => {
         fc.asyncProperty(
           // Generate valid email local parts (alphanumeric, 3-10 chars)
           fc.stringMatching(/^[a-z][a-z0-9]{2,9}$/),
-          // Generate valid passwords (8-20 chars, alphanumeric)
-          fc.stringMatching(/^[a-zA-Z0-9]{8,20}$/),
+          // Generate valid passwords (8-20 chars, must have uppercase, digit, special char)
+          fc.stringMatching(/^[A-Z][a-z]{2,5}[0-9]{2}[!@#]$/),
           // Generate valid names (2-20 chars)
           fc.stringMatching(/^[A-Z][a-z]{1,19}$/),
           async (emailLocal, senha, nome) => {

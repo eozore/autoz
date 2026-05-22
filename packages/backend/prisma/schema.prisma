@@ -50,6 +50,39 @@ enum AppointmentStatus {
   CANCELADO
 }
 
+enum OnboardingStepKey {
+  COMPANY_PROFILE
+  SERVICES_SETUP
+  LOCATION_SETUP
+  FIRST_CLIENT
+  FIRST_APPOINTMENT
+  PUBLIC_PAGE_ACTIVATION
+  FIRST_REVIEW_RECEIVED
+}
+
+enum BadgeType {
+  PERFIL_COMPLETO
+  STREAK_MENSAL
+  PRIMEIRO_REVIEW
+}
+
+enum AnalyticsEventType {
+  PAGE_VIEW
+  BOOKING_STARTED
+  BOOKING_COMPLETED
+  ONBOARDING_STEP_COMPLETED
+  SERVICE_CREATED
+  REVIEW_SUBMITTED
+}
+
+enum FormaPagamento {
+  A_VISTA
+  PARCELADO
+  PIX
+  CARTAO_CREDITO
+  CARTAO_DEBITO
+}
+
 // ==================== MODELS ====================
 
 model Tenant {
@@ -68,6 +101,12 @@ model Tenant {
   stockMovements StockMovement[]
   bills        Bill[]
   appointments Appointment[]
+  onboardingProgress OnboardingProgress[]
+  reviews      Review[]
+  badges       Badge[]
+  analyticsEvents AnalyticsEvent[]
+  faqs         FAQ[]
+  settings     TenantSettings?
 
   @@map("tenants")
 }
@@ -85,7 +124,8 @@ model User {
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
-  tenant Tenant? @relation(fields: [tenant_id], references: [id])
+  tenant        Tenant?        @relation(fields: [tenant_id], references: [id])
+  refreshTokens RefreshToken[]
 
   @@index([tenant_id])
   @@index([email])
@@ -133,16 +173,18 @@ model Location {
 }
 
 model Service {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   tenant_id       String
   nome            String
   descricao       String?
   foto_url        String?
-  duracao_minutos Int      @default(60)
-  valor           Decimal? @db.Decimal(10, 2)
-  ativo           Boolean  @default(true)
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  duracao_minutos Int       @default(60)
+  valor           Decimal?  @db.Decimal(10, 2)
+  categoria       String?   @db.VarChar(100)
+  ativo           Boolean   @default(true)
+  deleted_at      DateTime?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
 
   tenant              Tenant               @relation(fields: [tenant_id], references: [id])
   appointments        Appointment[]
@@ -159,6 +201,7 @@ model Client {
   email            String?
   celular          String
   data_nascimento  DateTime? @db.Date
+  deleted_at       DateTime?
   created_at       DateTime  @default(now())
   updated_at       DateTime  @updatedAt
 
@@ -174,7 +217,7 @@ model Client {
 }
 
 model Vehicle {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   tenant_id     String
   client_id     String
   marca         String
@@ -183,8 +226,9 @@ model Vehicle {
   placa         String
   quilometragem Int?
   cor           String?
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  deleted_at    DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
 
   tenant           Tenant                    @relation(fields: [tenant_id], references: [id])
   client           Client                    @relation(fields: [client_id], references: [id])
@@ -198,17 +242,18 @@ model Vehicle {
 }
 
 model InventoryItem {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   tenant_id         String
   nome              String
   descricao         String?
-  custo             Decimal  @db.Decimal(10, 2)
-  valor_venda       Decimal  @db.Decimal(10, 2)
+  custo             Decimal   @db.Decimal(10, 2)
+  valor_venda       Decimal   @db.Decimal(10, 2)
   tipo              ItemType
   quantidade_atual  Int
-  quantidade_minima Int      @default(0)
-  created_at        DateTime @default(now())
-  updated_at        DateTime @updatedAt
+  quantidade_minima Int       @default(0)
+  deleted_at        DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
 
   tenant     Tenant          @relation(fields: [tenant_id], references: [id])
   movements  StockMovement[]
@@ -243,6 +288,7 @@ model Bill {
   data_vencimento DateTime   @db.Date
   data_pagamento  DateTime?  @db.Date
   status          BillStatus @default(PENDENTE)
+  deleted_at      DateTime?
   created_at      DateTime   @default(now())
   updated_at      DateTime   @updatedAt
 
@@ -267,8 +313,9 @@ model Appointment {
   celular_visitante  String?
   notas              String?
   desconto           Decimal?          @db.Decimal(10, 2)
-  forma_pagamento    String?
+  forma_pagamento    FormaPagamento?
   valor_servico      Decimal?          @db.Decimal(10, 2)
+  deleted_at         DateTime?
   created_at         DateTime          @default(now())
   updated_at         DateTime          @updatedAt
 
@@ -278,6 +325,7 @@ model Appointment {
   location            Location             @relation(fields: [location_id], references: [id])
   vehicle             Vehicle?             @relation(fields: [vehicle_id], references: [id])
   appointmentServices AppointmentService[]
+  review              Review?
 
   @@index([tenant_id])
   @@index([data_hora])
@@ -313,4 +361,109 @@ model VehicleOwnershipHistory {
   @@index([vehicle_id])
   @@index([client_id])
   @@map("vehicle_ownership_history")
+}
+
+model OnboardingProgress {
+  id           String            @id @default(uuid())
+  tenant_id    String
+  step         OnboardingStepKey
+  completed    Boolean           @default(false)
+  completed_at DateTime?
+  created_at   DateTime          @default(now())
+  updated_at   DateTime          @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@unique([tenant_id, step])
+  @@index([tenant_id])
+  @@map("onboarding_progress")
+}
+
+model Review {
+  id                  String   @id @default(uuid())
+  tenant_id           String
+  appointment_id      String   @unique
+  rating              Int
+  comment             String
+  customer_name       String
+  vehicle_description String
+  created_at          DateTime @default(now())
+
+  tenant      Tenant      @relation(fields: [tenant_id], references: [id])
+  appointment Appointment @relation(fields: [appointment_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([tenant_id, created_at])
+  @@map("reviews")
+}
+
+model Badge {
+  id         String    @id @default(uuid())
+  tenant_id  String
+  type       BadgeType
+  awarded_at DateTime  @default(now())
+  created_at DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@unique([tenant_id, type])
+  @@index([tenant_id])
+  @@map("badges")
+}
+
+model AnalyticsEvent {
+  id         String             @id @default(uuid())
+  tenant_id  String
+  event_type AnalyticsEventType
+  metadata   Json               @default("{}")
+  created_at DateTime           @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([tenant_id, event_type])
+  @@index([created_at])
+  @@map("analytics_events")
+}
+
+model FAQ {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  question   String
+  answer     String
+  sort_order Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@map("faqs")
+}
+
+model TenantSettings {
+  id                String   @id @default(uuid())
+  tenant_id         String   @unique
+  garantia_enabled  Boolean  @default(false)
+  tips_dismissed    Json     @default("[]")
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@map("tenant_settings")
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  token_hash String   @unique
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([token_hash])
+  @@map("refresh_tokens")
 }

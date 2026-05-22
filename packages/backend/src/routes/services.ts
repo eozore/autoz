@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { createServiceSchema, updateServiceSchema } from '../schemas/service';
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
 
 const router = Router();
 
@@ -22,6 +22,7 @@ router.post('/', async (req: Request, res: Response) => {
         foto_url: data.foto_url ?? null,
         duracao_minutos: data.duracao_minutos,
         valor: data.valor ?? null,
+        categoria: data.categoria ?? null,
         ativo: data.ativo ?? true,
       },
     });
@@ -80,6 +81,7 @@ router.put('/:serviceId', async (req: Request<{ serviceId: string }>, res: Respo
         ...(data.foto_url !== undefined && { foto_url: data.foto_url }),
         ...(data.duracao_minutos !== undefined && { duracao_minutos: data.duracao_minutos }),
         ...(data.valor !== undefined && { valor: data.valor }),
+        ...(data.categoria !== undefined && { categoria: data.categoria }),
         ...(data.ativo !== undefined && { ativo: data.ativo }),
       },
     });
@@ -120,6 +122,82 @@ router.delete('/:serviceId', async (req: Request<{ serviceId: string }>, res: Re
     }
     logger.error('Delete service error', { error: String(err) });
     res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * Zod schema for bulk service import.
+ */
+const bulkServiceSchema = z.object({
+  services: z.array(
+    z.object({
+      nome: z.string().min(1, 'Nome é obrigatório'),
+      duracao_minutos: z.number().int().min(5, 'Duração mínima: 5 minutos').max(480),
+      valor: z.number().min(0).optional(),
+    }),
+  ).min(1, 'Pelo menos um serviço é obrigatório'),
+});
+
+/**
+ * POST /services/bulk — Bulk import services for the tenant.
+ * Creates all services in a transaction and returns the created count and service list.
+ */
+router.post('/bulk', async (req: Request, res: Response) => {
+  try {
+    const data = bulkServiceSchema.parse(req.body);
+    const tenantId = req.context!.tenant_id!;
+
+    const created = await prisma.$transaction(
+      data.services.map((svc) =>
+        prisma.service.create({
+          data: {
+            tenant_id: tenantId,
+            nome: svc.nome,
+            duracao_minutos: svc.duracao_minutos,
+            valor: svc.valor ?? null,
+            ativo: true,
+          },
+          select: { id: true, nome: true },
+        }),
+      ),
+    );
+
+    res.status(201).json({
+      created: created.length,
+      services: created,
+    });
+  } catch (err) {
+    if (err instanceof ZodError) {
+      res.status(400).json({ error: 'Dados inválidos', details: err.errors });
+      return;
+    }
+    logger.error('Bulk service import error', { error: String(err) });
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+/**
+ * PATCH /services/:id/restore — Restore a soft-deleted service.
+ */
+router.patch('/:id/restore', async (req: Request<{ id: string }>, res: Response) => {
+  try {
+    const tenantId = req.context!.tenant_id!;
+    const record = await prisma.$queryRawUnsafe<any[]>(
+      `SELECT id FROM services WHERE id = $1 AND tenant_id = $2`,
+      req.params.id, tenantId
+    );
+    if (!record || record.length === 0) {
+      res.status(404).json({ error: 'Registro não encontrado' });
+      return;
+    }
+    await prisma.$executeRawUnsafe(
+      `UPDATE services SET deleted_at = NULL WHERE id = $1`,
+      req.params.id
+    );
+    res.json({ message: 'Registro restaurado' });
+  } catch (err) {
+    logger.error('Restore service error', { error: String(err) });
+    res.status(500).json({ error: 'Erro ao restaurar registro' });
   }
 });
 
